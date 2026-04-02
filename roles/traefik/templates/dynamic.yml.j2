@@ -25,6 +25,23 @@ http:
       tls:
         certResolver: cloudflare
 
+    # === WEBHOOK BYPASS (no auth - external services call these) ===
+    n8n-webhooks:
+      rule: "Host(`n8n.{{ domain }}`) && (PathPrefix(`/webhook/`) || PathPrefix(`/webhook-test/`))"
+      entryPoints: [websecure]
+      service: n8n
+      priority: 100
+      tls:
+        certResolver: cloudflare
+
+    dify-api-public:
+      rule: "Host(`dify.{{ domain }}`) && (PathPrefix(`/v1/`) || PathPrefix(`/files/`))"
+      entryPoints: [websecure]
+      service: dify-api-svc
+      priority: 100
+      tls:
+        certResolver: cloudflare
+
     # === VM-04 AI PROD services (protected) ===
     n8n:
       rule: "Host(`n8n.{{ domain }}`)"
@@ -126,6 +143,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://10.10.40.5:3000"
+
+    dify-api-svc:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.40.5:5001"
 
     lobechat:
       loadBalancer:

@@ -89,16 +89,128 @@
       failed_when: false
       changed_when: backup_rest.rc == 0
 
-    # === STORAGEBOX SYNC ===
-    - name: Create weekly sync to Hetzner StorageBox
+    # === HETZNER STORAGEBOX BX31 (5 TB offsite) ===
+    - name: Install sshfs and borg for StorageBox
+      ansible.builtin.apt:
+        name:
+          - sshfs
+          - borgbackup
+        state: present
+
+    - name: Create StorageBox SSH key
+      ansible.builtin.command: >
+        ssh-keygen -t ed25519 -N "" -f /root/.ssh/storagebox_ed25519
+        -C "proxmox-backup@{{ ansible_hostname }}"
+      args:
+        creates: /root/.ssh/storagebox_ed25519
+
+    - name: Show StorageBox SSH pubkey (add to Robot → StorageBox → SSH Keys)
+      ansible.builtin.command: cat /root/.ssh/storagebox_ed25519.pub
+      register: sb_pubkey
+      changed_when: false
+
+    - name: Display StorageBox SSH pubkey
+      ansible.builtin.debug:
+        msg: |
+          Add this key to Hetzner Robot → StorageBox → SSH Keys:
+          {{ sb_pubkey.stdout }}
+
+    - name: Create StorageBox SSH config
+      ansible.builtin.copy:
+        content: |
+          Host storagebox
+            HostName {{ vault_storagebox_host }}
+            User {{ vault_storagebox_user }}
+            Port 23
+            IdentityFile /root/.ssh/storagebox_ed25519
+            StrictHostKeyChecking accept-new
+        dest: /root/.ssh/config.d/storagebox
+        mode: "0600"
+
+    - name: Ensure SSH config includes config.d
+      ansible.builtin.lineinfile:
+        path: /root/.ssh/config
+        line: "Include config.d/*"
+        create: true
+        mode: "0600"
+        insertbefore: BOF
+
+    - name: Create StorageBox backup directories
+      ansible.builtin.command: >
+        ssh -p 23 -i /root/.ssh/storagebox_ed25519
+        {{ vault_storagebox_user }}@{{ vault_storagebox_host }}
+        mkdir -p backups/proxmox backups/pgdump backups/nextcloud
+      register: sb_mkdir
+      failed_when: sb_mkdir.rc != 0 and 'exists' not in sb_mkdir.stderr
+      changed_when: sb_mkdir.rc == 0
+
+    - name: Create backup sync script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Grupa Festiwale — Offsite backup to Hetzner StorageBox BX31 (5 TB)
+          # Runs weekly via cron
+
+          set -euo pipefail
+          LOG="/var/log/storagebox-sync.log"
+          SB_HOST="{{ vault_storagebox_user }}@{{ vault_storagebox_host }}"
+          SB_PORT=23
+          SB_KEY="/root/.ssh/storagebox_ed25519"
+          SSH_CMD="ssh -p $SB_PORT -i $SB_KEY"
+
+          log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
+
+          log "=== Starting offsite backup ==="
+
+          # 1. Sync Proxmox vzdump backups
+          log "Syncing Proxmox backups..."
+          rsync -avz --delete \
+            -e "$SSH_CMD" \
+            /var/lib/vz/dump/ \
+            "${SB_HOST}:backups/proxmox/" \
+            >> "$LOG" 2>&1
+
+          # 2. Sync PostgreSQL dumps
+          log "Syncing PostgreSQL dumps..."
+          rsync -avz --delete \
+            -e "$SSH_CMD" \
+            /var/backups/postgresql/ \
+            "${SB_HOST}:backups/pgdump/" \
+            >> "$LOG" 2>&1
+
+          # 3. Sync NextCloud data (if mounted)
+          if mountpoint -q /mnt/storagebox 2>/dev/null; then
+            log "NextCloud already on StorageBox — skipping"
+          fi
+
+          log "=== Offsite backup complete ==="
+        dest: /opt/scripts/storagebox-sync.sh
+        mode: "0750"
+
+    - name: Create scripts directory
+      ansible.builtin.file:
+        path: /opt/scripts
+        state: directory
+        mode: "0750"
+
+    - name: Weekly offsite sync cron (Sunday 05:00)
       ansible.builtin.cron:
-        name: "PBS to StorageBox weekly sync"
+        name: "Offsite backup to Hetzner StorageBox BX31"
         minute: "0"
         hour: "5"
         weekday: "0"
+        job: "/opt/scripts/storagebox-sync.sh"
+        user: root
+
+    - name: Daily offsite sync for critical data (pgdump only, 04:30)
+      ansible.builtin.cron:
+        name: "Daily pgdump sync to StorageBox"
+        minute: "30"
+        hour: "4"
         job: >
           rsync -avz --delete
-          /var/lib/proxmox-backup/
-          {{ vault_storagebox_user }}@{{ vault_storagebox_host }}:backups/
+          -e "ssh -p 23 -i /root/.ssh/storagebox_ed25519"
+          /var/backups/postgresql/
+          {{ vault_storagebox_user }}@{{ vault_storagebox_host }}:backups/pgdump/
           >> /var/log/storagebox-sync.log 2>&1
         user: root
