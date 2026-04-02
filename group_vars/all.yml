@@ -127,7 +127,6 @@ postgresql_databases:
   - name: authentik
   - name: borys
   - name: rekrutacja
-  - name: lobechat
 
 # === DRAGONFLYDB ===
 dragonflydb_port: 6379

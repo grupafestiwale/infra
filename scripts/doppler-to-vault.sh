@@ -3,14 +3,14 @@
 # Generate Ansible vault.yml from Doppler secrets
 #
 # Usage:
-#   ./doppler-to-vault.sh                    # dev config (default)
-#   ./doppler-to-vault.sh prd                # production config
+#   ./doppler-to-vault.sh                    # prd config (default)
+#   ./doppler-to-vault.sh dev                # dev config
 #   DOPPLER_TOKEN=dp.xxx ./doppler-to-vault.sh  # service token (CI/CD)
 ###############################################################################
 
 set -euo pipefail
 
-CONFIG="${1:-dev}"
+CONFIG="${1:-prd}"
 PROJECT="infra"
 OUTPUT_DIR="$(cd "$(dirname "$0")/.." && pwd)/group_vars"
 OUTPUT_FILE="${OUTPUT_DIR}/vault.yml"
