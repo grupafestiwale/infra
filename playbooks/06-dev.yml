@@ -1,0 +1,113 @@
+---
+# FAZA 6: VM-05 DEV - Traefik auto-discovery + Docker Host + Dev Stacks
+# Dependencies: PostgreSQL (dev schemas), DragonflyDB
+#
+# Usage: ansible-playbook playbooks/06-dev.yml
+#
+# After deployment, manage stacks with:
+#   ssh vm-05-dev
+#   /opt/dev/scripts/dev-manage.sh status
+#   /opt/dev/scripts/dev-manage.sh up coding
+#   /opt/dev/scripts/dev-manage.sh up agentic
+
+- name: "FAZA 6 - VM-05 Development"
+  hosts: vm_dev
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include Docker role
+      ansible.builtin.include_role:
+        name: docker
+
+    - name: Create dev directories
+      ansible.builtin.file:
+        path: "/opt/dev/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - traefik
+        - projects
+
+    - name: Deploy Traefik with Docker auto-discovery
+      ansible.builtin.template:
+        src: docker-compose-traefik-dev.yml.j2
+        dest: /opt/dev/traefik/docker-compose.yml
+        mode: "0640"
+
+    - name: Create Docker networks for dev
+      ansible.builtin.command: "docker network create {{ item }}"
+      loop:
+        - dev-frontend
+        - dev-proxy
+      register: net_create
+      failed_when: net_create.rc != 0 and 'already exists' not in net_create.stderr
+      changed_when: net_create.rc == 0
+
+    - name: Start Traefik dev
+      ansible.builtin.command: docker compose up -d
+      args:
+        chdir: /opt/dev/traefik
+      changed_when: true
+
+    - name: Deploy Cloudflare Companion for dev auto-DNS
+      ansible.builtin.template:
+        src: cf-companion-dev.yml.j2
+        dest: /opt/dev/traefik/cf-companion.yml
+        mode: "0640"
+
+    - name: Start Cloudflare Companion dev
+      ansible.builtin.command: docker compose -f cf-companion.yml up -d
+      args:
+        chdir: /opt/dev/traefik
+      changed_when: true
+
+    # === DEV STACKS ===
+    - name: Include dev-stacks role
+      ansible.builtin.include_role:
+        name: dev-stacks
+
+    # === MONITORING ===
+    - name: Install cadvisor for monitoring
+      ansible.builtin.command: >
+        docker run -d --name=cadvisor
+        --restart=unless-stopped
+        --volume=/:/rootfs:ro
+        --volume=/var/run:/var/run:ro
+        --volume=/sys:/sys:ro
+        --volume=/var/lib/docker/:/var/lib/docker:ro
+        --publish=8081:8080
+        gcr.io/cadvisor/cadvisor:latest
+      register: cadvisor_create
+      failed_when: cadvisor_create.rc != 0 and 'already in use' not in cadvisor_create.stderr
+      changed_when: cadvisor_create.rc == 0
+
+    - name: Show post-deployment instructions
+      ansible.builtin.debug:
+        msg: |
+          VM-05 DEV is ready!
+
+          Manage dev stacks:
+            /opt/dev/scripts/dev-manage.sh status
+            /opt/dev/scripts/dev-manage.sh up coding
+            /opt/dev/scripts/dev-manage.sh up agentic
+            /opt/dev/scripts/dev-manage.sh up crm
+            /opt/dev/scripts/dev-manage.sh up browser
+            /opt/dev/scripts/dev-manage.sh up n8n-dev
+
+          RAM Budget (17 GB available):
+            coding:   ~8 GB  (OpenHands + Bolt.diy + Tabby)
+            agentic:  ~6 GB  (DeerFlow + Hermes + CrewAI + OpenViking)
+            crm:      ~5 GB  (Bitrix24 + MySQL + Odoo)
+            browser:  ~0.5 GB (Lightpanda)
+            n8n-dev:  ~1 GB  (N8N Dev)
+
+          Recommended combos:
+            coding + browser           = 8.5 GB  OK
+            agentic + browser + n8n    = 7.5 GB  OK
+            coding + agentic + browser = 14.5 GB OK (tight)
+            ALL AT ONCE                = 20.5 GB OOM!

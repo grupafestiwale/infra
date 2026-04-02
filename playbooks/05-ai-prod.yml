@@ -1,0 +1,23 @@
+---
+# FAZA 5: VM-04 AI PROD - Docker Host + full AI stack
+# Dependencies: PostgreSQL, DragonflyDB, OpenBao (API keys), Traefik LXC-01
+#
+# Usage: ansible-playbook playbooks/05-ai-prod.yml
+
+- name: "FAZA 5 - VM-04 AI Production"
+  hosts: vm_ai_prod
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include Docker role
+      ansible.builtin.include_role:
+        name: docker
+
+    - name: Include AI stack role
+      ansible.builtin.include_role:
+        name: ai-stack

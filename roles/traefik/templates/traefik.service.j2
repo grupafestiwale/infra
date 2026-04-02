@@ -1,0 +1,18 @@
+[Unit]
+Description=Traefik Reverse Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=traefik
+Group=traefik
+Environment="CF_API_EMAIL=admin@{{ domain }}"
+Environment="CF_DNS_API_TOKEN={{ vault_cloudflare_api_token }}"
+ExecStart=/usr/local/bin/traefik --configfile=/etc/traefik/traefik.yml
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,98 @@
+# {{ ansible_managed }}
+# Proxmox VE Network Configuration
+# Grupa Festiwale - Hetzner Dedicated
+
+auto lo
+iface lo inet loopback
+
+# Public interface (Hetzner)
+auto eno1
+iface eno1 inet manual
+
+# Public bridge (Hetzner main IP)
+auto vmbr0
+iface vmbr0 inet static
+    address {{ vault_proxmox_ip }}
+    netmask 255.255.255.192
+    gateway {{ vault_proxmox_ip | regex_replace('\.\d+$', '.1') }}
+    bridge-ports eno1
+    bridge-stp off
+    bridge-fd 0
+
+# VLAN 10 - Management
+auto vmbr10
+iface vmbr10 inet static
+    address 10.10.10.1
+    netmask 255.255.255.0
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    post-up echo 1 > /proc/sys/net/ipv4/ip_forward
+    post-up iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o vmbr0 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s 10.10.10.0/24 -o vmbr0 -j MASQUERADE
+
+# VLAN 20 - DMZ (public-facing services)
+auto vmbr20
+iface vmbr20 inet static
+    address 10.10.20.1
+    netmask 255.255.255.0
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    post-up iptables -t nat -A POSTROUTING -s 10.10.20.0/24 -o vmbr0 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s 10.10.20.0/24 -o vmbr0 -j MASQUERADE
+
+# VLAN 30 - Data (DB + Files)
+auto vmbr30
+iface vmbr30 inet static
+    address 10.10.30.1
+    netmask 255.255.255.0
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+# VLAN 40 - Apps (AI Production)
+auto vmbr40
+iface vmbr40 inet static
+    address 10.10.40.1
+    netmask 255.255.255.0
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    post-up iptables -t nat -A POSTROUTING -s 10.10.40.0/24 -o vmbr0 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s 10.10.40.0/24 -o vmbr0 -j MASQUERADE
+
+# VLAN 50 - Development
+auto vmbr50
+iface vmbr50 inet static
+    address 10.10.50.1
+    netmask 255.255.255.0
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+    post-up iptables -t nat -A POSTROUTING -s 10.10.50.0/24 -o vmbr0 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s 10.10.50.0/24 -o vmbr0 -j MASQUERADE
+
+# VLAN 60 - Vault (isolated)
+auto vmbr60
+iface vmbr60 inet static
+    address 10.10.60.1
+    netmask 255.255.255.0
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+# Inter-VLAN routing rules
+# VLAN 30 (data) accessible only from VLAN 40 and 50
+post-up iptables -A FORWARD -s 10.10.40.0/24 -d 10.10.30.0/24 -j ACCEPT
+post-up iptables -A FORWARD -s 10.10.50.0/24 -d 10.10.30.0/24 -j ACCEPT
+post-up iptables -A FORWARD -s 10.10.30.0/24 -d 10.10.40.0/24 -m state --state ESTABLISHED,RELATED -j ACCEPT
+post-up iptables -A FORWARD -s 10.10.30.0/24 -d 10.10.50.0/24 -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# VLAN 60 (vault) accessible only from VLAN 10, 40, 50
+post-up iptables -A FORWARD -s 10.10.10.0/24 -d 10.10.60.0/24 -p tcp --dport 8200 -j ACCEPT
+post-up iptables -A FORWARD -s 10.10.40.0/24 -d 10.10.60.0/24 -p tcp --dport 8200 -j ACCEPT
+post-up iptables -A FORWARD -s 10.10.50.0/24 -d 10.10.60.0/24 -p tcp --dport 8200 -j ACCEPT
+
+# Block all other inter-VLAN traffic by default
+post-up iptables -A FORWARD -s 10.10.0.0/16 -d 10.10.0.0/16 -j DROP

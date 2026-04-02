@@ -1,0 +1,21 @@
+# Example: Deploy any service with auto reverse proxy
+# Just add labels and connect to dev-frontend network
+#
+# Usage: docker compose -f example-docker-compose.yml up -d
+# Result: http://myapp.dev.{{ domain }} (via Tailscale)
+
+services:
+  myapp:
+    image: nginx:alpine
+    container_name: myapp
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.myapp.rule=Host(`myapp.dev.{{ domain }}`)"
+      - "traefik.http.services.myapp.loadbalancer.server.port=80"
+    networks:
+      - dev-frontend
+
+networks:
+  dev-frontend:
+    external: true

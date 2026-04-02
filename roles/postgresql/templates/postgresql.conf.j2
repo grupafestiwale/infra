@@ -1,0 +1,46 @@
+# {{ ansible_managed }}
+# PostgreSQL 16 Production Configuration
+# Optimized for 32 GB RAM, 8 vCPU, NVMe SSD
+
+# Memory
+shared_buffers = 8GB
+effective_cache_size = 24GB
+work_mem = 256MB
+maintenance_work_mem = 2GB
+huge_pages = try
+
+# Connections
+max_connections = 200
+
+# Write Performance
+wal_buffers = 64MB
+checkpoint_completion_target = 0.9
+checkpoint_timeout = 15min
+max_wal_size = 4GB
+min_wal_size = 1GB
+
+# Query Performance
+random_page_cost = 1.1
+effective_io_concurrency = 200
+default_statistics_target = 100
+
+# Parallel Queries
+max_worker_processes = 8
+max_parallel_workers_per_gather = 4
+max_parallel_workers = 8
+max_parallel_maintenance_workers = 4
+
+# Logging
+log_min_duration_statement = 1000
+log_checkpoints = on
+log_connections = on
+log_disconnections = on
+log_lock_waits = on
+log_temp_files = 0
+log_autovacuum_min_duration = 0
+
+# Autovacuum (aggressive for high-write workloads)
+autovacuum_max_workers = 4
+autovacuum_naptime = 30s
+autovacuum_vacuum_scale_factor = 0.05
+autovacuum_analyze_scale_factor = 0.02

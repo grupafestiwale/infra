@@ -1,0 +1,49 @@
+---
+# TEMPLATE — copy to vault.yml and encrypt with:
+#   ansible-vault encrypt group_vars/vault.yml
+#
+# NEVER commit vault.yml unencrypted!
+
+# Hetzner
+vault_proxmox_ip: "YOUR_HETZNER_PUBLIC_IP"
+
+# Cloudflare
+vault_cloudflare_api_token: "YOUR_CF_API_TOKEN"
+vault_cloudflare_tunnel_token: "YOUR_CF_TUNNEL_TOKEN"
+vault_cloudflare_tunnel_id: "YOUR_CF_TUNNEL_ID"
+vault_cloudflare_zone_id: "YOUR_CF_ZONE_ID"
+
+# Tailscale
+vault_tailscale_authkey: "tskey-auth-XXXXXXXX"
+
+# PostgreSQL
+vault_pg_superuser_password: "CHANGE_ME_STRONG_PASSWORD"
+vault_pg_n8n_password: "CHANGE_ME"
+vault_pg_dify_password: "CHANGE_ME"
+vault_pg_nextcloud_password: "CHANGE_ME"
+vault_pg_paperless_password: "CHANGE_ME"
+vault_pg_agentdb_password: "CHANGE_ME"
+vault_pg_litellm_password: "CHANGE_ME"
+vault_pg_lobechat_password: "CHANGE_ME"
+vault_pg_authentik_password: "CHANGE_ME"
+vault_pg_borys_password: "CHANGE_ME"
+vault_pg_rekrutacja_password: "CHANGE_ME"
+
+# DragonflyDB
+vault_dragonflydb_password: "CHANGE_ME"
+
+# OpenBao
+vault_openbao_unseal_keys: []
+vault_openbao_root_token: "WILL_BE_GENERATED"
+
+# LLM API Keys
+vault_openai_api_key: "sk-..."
+vault_anthropic_api_key: "sk-ant-..."
+
+# Backup
+vault_pbs_server: "YOUR_PBS_IP:8007"
+vault_pbs_fingerprint: "YOUR_PBS_FINGERPRINT"
+vault_pbs_password: "CHANGE_ME"
+vault_storagebox_host: "uXXXXXX.your-storagebox.de"
+vault_storagebox_user: "uXXXXXX"
+vault_storagebox_password: "CHANGE_ME"

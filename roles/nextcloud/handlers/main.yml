@@ -1,0 +1,4 @@
+---
+- name: mount storagebox
+  ansible.builtin.command: mount -a
+  changed_when: true

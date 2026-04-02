@@ -1,0 +1,47 @@
+# {{ ansible_managed }}
+# LiteLLM Router Configuration - Grupa Festiwale
+
+model_list:
+  # Cloud models (via API)
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: "{{ vault_openai_api_key }}"
+
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: "{{ vault_anthropic_api_key }}"
+
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: "{{ vault_anthropic_api_key }}"
+
+  # Local models (Ollama on same VM)
+  - model_name: llama-8b
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: "http://ollama:11434"
+
+  - model_name: mistral-7b
+    litellm_params:
+      model: ollama/mistral:7b
+      api_base: "http://ollama:11434"
+
+router_settings:
+  routing_strategy: "cost-based-routing"
+  num_retries: 3
+  timeout: 120
+  allowed_fails: 2
+  cooldown_time: 60
+
+general_settings:
+  master_key: "{{ vault_anthropic_api_key | hash('sha256') | truncate(32, true, '') }}"
+  database_url: "postgresql://litellm:{{ vault_pg_litellm_password }}@10.10.30.3:{{ pgbouncer_port }}/litellm"
+  cache: true
+  cache_params:
+    type: "redis"
+    host: "10.10.30.3"
+    port: {{ dragonflydb_port }}
+    password: "{{ vault_dragonflydb_password }}"

@@ -1,0 +1,104 @@
+---
+# FAZA 8: Backup configuration
+# Dependencies: All nodes running, PBS server reachable
+#
+# Usage: ansible-playbook playbooks/08-backup.yml
+
+- name: "FAZA 8 - Backup Configuration"
+  hosts: proxmox
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Install proxmox-backup-client on host
+      ansible.builtin.apt:
+        name: proxmox-backup-client
+        state: present
+
+    - name: Configure PBS storage in Proxmox
+      ansible.builtin.command: >
+        pvesm add pbs pbs-office
+        --server {{ vault_pbs_server }}
+        --datastore backups
+        --username backup@pbs
+        --password {{ vault_pbs_password }}
+        --fingerprint {{ vault_pbs_fingerprint }}
+      register: pbs_add
+      failed_when: pbs_add.rc != 0 and 'already exists' not in pbs_add.stderr
+      changed_when: pbs_add.rc == 0
+      no_log: true
+
+    # === BACKUP SCHEDULES ===
+    - name: Create backup job for LXC-00 VAULT (daily 01:00)
+      ansible.builtin.command: >
+        pvesh create /cluster/backup
+        --enabled 1
+        --schedule "0 1 * * *"
+        --storage pbs-office
+        --vmid 100
+        --mode snapshot
+        --compress zstd
+        --mailnotification failure
+        --notes-template "LXC-00 VAULT daily backup"
+      register: backup_vault
+      failed_when: false
+      changed_when: backup_vault.rc == 0
+
+    - name: Create backup job for LXC-02 DB (daily 02:00)
+      ansible.builtin.command: >
+        pvesh create /cluster/backup
+        --enabled 1
+        --schedule "0 2 * * *"
+        --storage pbs-office
+        --vmid 102
+        --mode snapshot
+        --compress zstd
+        --mailnotification failure
+        --notes-template "LXC-02 DB daily backup"
+      register: backup_db
+      failed_when: false
+      changed_when: backup_db.rc == 0
+
+    - name: Create backup job for VM-04 AI PROD (daily 03:00)
+      ansible.builtin.command: >
+        pvesh create /cluster/backup
+        --enabled 1
+        --schedule "0 3 * * *"
+        --storage pbs-office
+        --vmid 104
+        --mode snapshot
+        --compress zstd
+        --mailnotification failure
+        --notes-template "VM-04 AI PROD daily backup"
+      register: backup_ai
+      failed_when: false
+      changed_when: backup_ai.rc == 0
+
+    - name: Create backup job for remaining nodes (every 2 days 04:00)
+      ansible.builtin.command: >
+        pvesh create /cluster/backup
+        --enabled 1
+        --schedule "0 4 */2 * *"
+        --storage pbs-office
+        --vmid 101,103,105
+        --mode snapshot
+        --compress zstd
+        --mailnotification failure
+        --notes-template "LXC-01,03 + VM-05 bi-daily backup"
+      register: backup_rest
+      failed_when: false
+      changed_when: backup_rest.rc == 0
+
+    # === STORAGEBOX SYNC ===
+    - name: Create weekly sync to Hetzner StorageBox
+      ansible.builtin.cron:
+        name: "PBS to StorageBox weekly sync"
+        minute: "0"
+        hour: "5"
+        weekday: "0"
+        job: >
+          rsync -avz --delete
+          /var/lib/proxmox-backup/
+          {{ vault_storagebox_user }}@{{ vault_storagebox_host }}:backups/
+          >> /var/log/storagebox-sync.log 2>&1
+        user: root

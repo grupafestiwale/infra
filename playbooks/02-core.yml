@@ -1,0 +1,31 @@
+---
+# FAZA 2: LXC-01 CORE - Tailscale + Traefik + Cloudflared + Monitoring
+# Dependencies: OpenBao initialized and unsealed
+#
+# Usage: ansible-playbook playbooks/02-core.yml
+
+- name: "FAZA 2 - LXC-01 CORE"
+  hosts: lxc_core
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include Tailscale role
+      ansible.builtin.include_role:
+        name: tailscale
+
+    - name: Include Traefik role
+      ansible.builtin.include_role:
+        name: traefik
+
+    - name: Include Cloudflared role
+      ansible.builtin.include_role:
+        name: cloudflared
+
+    - name: Include monitoring role
+      ansible.builtin.include_role:
+        name: monitoring

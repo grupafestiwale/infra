@@ -1,0 +1,15 @@
+---
+# FAZA 7: Monitoring - Prometheus + Grafana + Alertmanager + Loki
+# Dependencies: All nodes running, node_exporter installed
+#
+# Usage: ansible-playbook playbooks/07-monitoring.yml
+
+- name: "FAZA 7 - Monitoring Stack (on LXC-01 CORE)"
+  hosts: lxc_core
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include monitoring role
+      ansible.builtin.include_role:
+        name: monitoring

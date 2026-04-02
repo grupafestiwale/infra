@@ -1,0 +1,44 @@
+# {{ ansible_managed }}
+# Authentik - Identity Provider - Grupa Festiwale
+
+services:
+  authentik-server:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_SECRET_KEY: "{{ authentik_secret.stdout }}"
+      AUTHENTIK_REDIS__HOST: "10.10.30.3"
+      AUTHENTIK_REDIS__PORT: "{{ dragonflydb_port }}"
+      AUTHENTIK_REDIS__PASSWORD: "{{ vault_dragonflydb_password }}"
+      AUTHENTIK_POSTGRESQL__HOST: "10.10.30.3"
+      AUTHENTIK_POSTGRESQL__PORT: "{{ pgbouncer_port }}"
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: "{{ vault_pg_authentik_password }}"
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /opt/authentik/media:/media
+      - /opt/authentik/templates:/templates
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:latest
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_SECRET_KEY: "{{ authentik_secret.stdout }}"
+      AUTHENTIK_REDIS__HOST: "10.10.30.3"
+      AUTHENTIK_REDIS__PORT: "{{ dragonflydb_port }}"
+      AUTHENTIK_REDIS__PASSWORD: "{{ vault_dragonflydb_password }}"
+      AUTHENTIK_POSTGRESQL__HOST: "10.10.30.3"
+      AUTHENTIK_POSTGRESQL__PORT: "{{ pgbouncer_port }}"
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: "{{ vault_pg_authentik_password }}"
+    volumes:
+      - /opt/authentik/media:/media
+      - /opt/authentik/templates:/templates

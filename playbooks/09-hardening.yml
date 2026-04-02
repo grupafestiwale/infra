@@ -1,0 +1,58 @@
+---
+# FAZA 9: Final security hardening pass
+# Dependencies: All nodes running and configured
+#
+# Usage: ansible-playbook playbooks/09-hardening.yml
+
+- name: "FAZA 9 - Security Hardening"
+  hosts: all:!proxmox
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Ensure SSH password auth disabled everywhere
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+      notify: restart sshd
+
+    - name: Ensure root login restricted everywhere
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PermitRootLogin"
+        line: "PermitRootLogin prohibit-password"
+      notify: restart sshd
+
+    - name: Remove unnecessary packages
+      ansible.builtin.apt:
+        name:
+          - telnet
+          - rsh-client
+        state: absent
+        purge: true
+
+    - name: Set secure permissions on sensitive files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "0600"
+      loop:
+        - /etc/shadow
+        - /etc/gshadow
+      failed_when: false
+
+    - name: Verify no world-writable files in /etc
+      ansible.builtin.command: find /etc -type f -perm -o+w
+      register: world_writable
+      changed_when: false
+
+    - name: Report world-writable files
+      ansible.builtin.debug:
+        msg: "WARNING: World-writable files found: {{ world_writable.stdout_lines }}"
+      when: world_writable.stdout_lines | length > 0
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.systemd:
+        name: sshd
+        state: restarted

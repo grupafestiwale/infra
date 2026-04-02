@@ -1,0 +1,89 @@
+---
+- name: Add OpenBao GPG key
+  ansible.builtin.get_url:
+    url: https://pkg.openbao.org/gpg.key
+    dest: /usr/share/keyrings/openbao-archive-keyring.asc
+    mode: "0644"
+
+- name: Add OpenBao repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/openbao-archive-keyring.asc] https://pkg.openbao.org/deb stable main"
+    filename: openbao
+    state: present
+
+- name: Install OpenBao
+  ansible.builtin.apt:
+    name: openbao
+    state: present
+    update_cache: true
+
+- name: Configure OpenBao
+  ansible.builtin.template:
+    src: openbao.hcl.j2
+    dest: /etc/openbao/config.hcl
+    owner: openbao
+    group: openbao
+    mode: "0640"
+  notify: restart openbao
+
+- name: Create data directory
+  ansible.builtin.file:
+    path: /opt/openbao/data
+    state: directory
+    owner: openbao
+    group: openbao
+    mode: "0750"
+
+- name: Enable and start OpenBao
+  ansible.builtin.systemd:
+    name: openbao
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for OpenBao to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8200/v1/sys/health"
+    status_code: [200, 429, 472, 473, 501, 503]
+  register: bao_health
+  retries: 10
+  delay: 3
+  until: bao_health.status in [200, 429, 472, 473, 501, 503]
+
+- name: Check if OpenBao is initialized
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8200/v1/sys/init"
+    method: GET
+  register: bao_init_status
+
+- name: Initialize OpenBao (first time only)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8200/v1/sys/init"
+    method: PUT
+    body_format: json
+    body:
+      secret_shares: 5
+      secret_threshold: 3
+  register: bao_init
+  when: not bao_init_status.json.initialized
+
+- name: Save init keys to local file
+  ansible.builtin.copy:
+    content: "{{ bao_init.json | to_nice_json }}"
+    dest: /root/.openbao-init-keys.json
+    mode: "0400"
+  when: bao_init is changed
+  # IMPORTANT: Move this file to a secure location after init!
+
+- name: Display init warning
+  ansible.builtin.debug:
+    msg: |
+      ⚠️  CRITICAL: OpenBao initialized!
+      Unseal keys and root token saved to /root/.openbao-init-keys.json
+
+      NEXT STEPS (manual):
+      1. Copy keys to a secure offline location (KeePass, paper)
+      2. Unseal with: bao operator unseal (3 of 5 keys)
+      3. Delete /root/.openbao-init-keys.json from server
+      4. Create secret engines and policies
+  when: bao_init is changed

@@ -1,0 +1,196 @@
+---
+# === GLOBAL VARIABLES ===
+# Secrets are stored in vault.yml (ansible-vault encrypted)
+
+domain: grupafestiwale.pl
+timezone: Europe/Warsaw
+locale: pl_PL.UTF-8
+ntp_servers:
+  - 0.pl.pool.ntp.org
+  - 1.pl.pool.ntp.org
+
+# === NETWORK ===
+vlans:
+  mgmt:
+    id: 10
+    subnet: 10.10.10.0/24
+    gateway: 10.10.10.1
+    bridge: vmbr10
+  dmz:
+    id: 20
+    subnet: 10.10.20.0/24
+    gateway: 10.10.20.1
+    bridge: vmbr20
+  data:
+    id: 30
+    subnet: 10.10.30.0/24
+    gateway: 10.10.30.1
+    bridge: vmbr30
+  apps:
+    id: 40
+    subnet: 10.10.40.0/24
+    gateway: 10.10.40.1
+    bridge: vmbr40
+  dev:
+    id: 50
+    subnet: 10.10.50.0/24
+    gateway: 10.10.50.1
+    bridge: vmbr50
+  vault:
+    id: 60
+    subnet: 10.10.60.0/24
+    gateway: 10.10.60.1
+    bridge: vmbr60
+
+# === ZFS ===
+zfs_pool: rpool
+zfs_disks:
+  - /dev/nvme0n1
+  - /dev/nvme1n1
+
+# === LXC DEFAULTS ===
+# Overridden at runtime by 00-proxmox-init.yml (auto-detects latest Debian 13 template)
+lxc_template: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+lxc_defaults:
+  ostype: debian
+  unprivileged: true
+  onboot: true
+  start: true
+
+# === VM DEFAULTS ===
+vm_defaults:
+  ostype: l26
+  bios: ovmf
+  machine: q35
+  onboot: true
+  scsihw: virtio-scsi-single
+
+# === NODE SPECS ===
+nodes:
+  lxc-00-vault:
+    cores: 2
+    memory: 4096
+    rootfs_size: 20
+    description: "OpenBao Vault - Secrets Management"
+  lxc-01-core:
+    cores: 2
+    memory: 8192
+    rootfs_size: 30
+    description: "Core - Traefik + Cloudflared + Tailscale + Monitoring"
+  lxc-02-db:
+    cores: 8
+    memory: 32768
+    rootfs_size: 50
+    zfs_dataset: true
+    description: "PostgreSQL 16 + RuVector + DragonflyDB"
+  lxc-03-data:
+    cores: 4
+    memory: 8192
+    rootfs_size: 30
+    zfs_dataset: true
+    description: "NextCloud + Paperless-NGX"
+  vm-04-ai-prod:
+    cores: 8
+    memory: 32768
+    disk_size: 1000
+    description: "AI Production - Docker Host"
+  vm-05-dev:
+    cores: 6
+    memory: 20480
+    disk_size: 1000
+    description: "Development Environment - Docker Host"
+  lxc-06-auth:
+    cores: 2
+    memory: 4096
+    rootfs_size: 20
+    description: "Authentik - Identity Provider + SSO"
+
+# === OPENBAO ===
+openbao_addr: "http://10.10.60.7:8200"
+openbao_version: "2.1.0"
+
+# === TRAEFIK ===
+traefik_version: "3.2"
+traefik_dashboard_port: 8080
+
+# === POSTGRESQL ===
+postgresql_version: 16
+postgresql_port: 5432
+postgresql_databases:
+  - name: n8n
+  - name: dify
+  - name: nextcloud
+  - name: paperless
+  - name: agentdb
+  - name: litellm
+  - name: lobechat
+  - name: authentik
+  - name: borys
+  - name: rekrutacja
+  - name: lobechat
+
+# === DRAGONFLYDB ===
+dragonflydb_port: 6379
+dragonflydb_maxmemory: "6gb"
+
+# === PGBOUNCER ===
+pgbouncer_port: 6432
+pgbouncer_max_client_conn: 1000
+pgbouncer_default_pool_size: 30
+
+# === MONITORING ===
+prometheus_port: 9090
+grafana_port: 3000
+alertmanager_port: 9093
+loki_port: 3100
+node_exporter_port: 9100
+
+# === BACKUP ===
+pbs_server: "{{ vault_pbs_server }}"
+storagebox_host: "{{ vault_storagebox_host }}"
+storagebox_user: "{{ vault_storagebox_user }}"
+
+# === HETZNER STORAGEBOX ===
+storagebox_mount: /mnt/storagebox
+storagebox_nextcloud_path: /mnt/storagebox/nextcloud
+storagebox_paperless_path: /mnt/storagebox/paperless
+
+# === AUTHENTIK ===
+authentik_host: 10.10.10.8
+authentik_port: 9000
+authentik_outpost_port: 9443
+
+# === DOMAINS / SUBDOMAINS ===
+subdomains:
+  # AI & Tools
+  chat: "chat.{{ domain }}"          # LobeChat
+  n8n: "n8n.{{ domain }}"            # N8N Workflow
+  dify: "dify.{{ domain }}"          # Dify AI Platform
+  ruflo: "ruflo.{{ domain }}"        # RuFlo Agent Runtime
+  api: "api.{{ domain }}"            # LiteLLM Router
+
+  # Business Apps
+  borys: "borys.{{ domain }}"        # Borys - Next.JS AI Admin Panel
+  rekrutacja: "rekrutacja.{{ domain }}" # HR Panel - Next.JS
+
+  # Infrastructure
+  files: "files.{{ domain }}"        # NextCloud
+  docs: "docs.{{ domain }}"          # Paperless-NGX
+  auth: "auth.{{ domain }}"          # Authentik SSO Portal
+  grafana: "grafana.{{ domain }}"    # Monitoring (Tailscale only)
+
+  # Dev (Tailscale only)
+  dev_wildcard: "*.dev.{{ domain }}" # Auto-discovery dev services
+
+# === APPS PROTECTED BY AUTHENTIK FORWARD AUTH ===
+# These apps require M365 login via Authentik before access
+authentik_protected_apps:
+  - chat
+  - n8n
+  - dify
+  - borys
+  - rekrutacja
+  - docs
+  - files
+  - ruflo
+  - grafana

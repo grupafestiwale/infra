@@ -1,0 +1,55 @@
+---
+- name: Include Docker role
+  ansible.builtin.include_role:
+    name: docker
+
+- name: Create Authentik directories
+  ansible.builtin.file:
+    path: "/opt/authentik/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - media
+    - templates
+    - certs
+
+- name: Generate Authentik secret key
+  ansible.builtin.command: openssl rand -base64 36
+  register: authentik_secret
+  changed_when: false
+
+- name: Deploy Authentik docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/authentik/docker-compose.yml
+    mode: "0640"
+
+- name: Start Authentik
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: /opt/authentik
+  changed_when: true
+
+- name: Wait for Authentik to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:9000/-/health/ready/"
+    status_code: [200, 204]
+  register: authentik_health
+  retries: 20
+  delay: 10
+  until: authentik_health.status in [200, 204]
+
+- name: Display Authentik setup instructions
+  ansible.builtin.debug:
+    msg: |
+      Authentik is running!
+
+      NEXT STEPS (manual in Authentik admin UI):
+      1. Go to https://auth.{{ domain }}/if/flow/initial-setup/
+      2. Create admin account
+      3. Admin → Providers → Create OAuth2/OIDC provider for each app
+      4. Admin → Sources → Create "Microsoft Entra ID" federation source
+         - Client ID/Secret from Azure App Registration
+         - Tenant: your M365 tenant ID
+      5. Admin → Applications → Create app per service
+      6. Admin → Outposts → Create proxy outpost for Traefik forward-auth

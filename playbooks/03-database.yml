@@ -1,0 +1,27 @@
+---
+# FAZA 3: LXC-02 DB - PostgreSQL 16 + RuVector + DragonflyDB + PgBouncer
+# Dependencies: OpenBao (passwords), LXC-02 created with ZFS passthrough
+#
+# Usage: ansible-playbook playbooks/03-database.yml
+
+- name: "FAZA 3 - LXC-02 Database"
+  hosts: lxc_db
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include PostgreSQL role
+      ansible.builtin.include_role:
+        name: postgresql
+
+    - name: Include DragonflyDB role
+      ansible.builtin.include_role:
+        name: dragonflydb
+
+    - name: Include PgBouncer role
+      ansible.builtin.include_role:
+        name: pgbouncer

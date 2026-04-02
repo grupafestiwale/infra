@@ -1,0 +1,86 @@
+# {{ ansible_managed }}
+# DEV STACK: CRM / Business Tools
+# Usage: cd /opt/dev/crm && docker compose up -d
+# RAM: ~5 GB total
+
+services:
+  # === Bitrix24 (Self-hosted) ===
+  # CRM + Project Management + HR
+  # UI: bitrix.dev.{{ domain }}
+  # Note: First start takes 5-10 min for initialization
+  bitrix:
+    image: bitrix24/1c-bitrix:latest
+    container_name: bitrix24
+    restart: unless-stopped
+    environment:
+      BX_DB_HOST: "${PG_HOST}"
+      BX_DB_NAME: bitrix_dev
+      BX_DB_LOGIN: bitrix_dev
+      BX_DB_PASSWORD: "bitrix_dev_pass"
+      # Bitrix24 uses MySQL by default. If no PG support,
+      # uncomment the MySQL service below instead.
+    volumes:
+      - /opt/dev/crm/bitrix-data:/var/www/html
+    ports:
+      - "3020:80"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bitrix.rule=Host(`bitrix.dev.{{ domain }}`)"
+      - "traefik.http.services.bitrix.loadbalancer.server.port=80"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # Bitrix24 requires MySQL (not PostgreSQL)
+  bitrix-mysql:
+    image: mysql:8.0
+    container_name: bitrix-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: bitrix_dev
+      MYSQL_USER: bitrix_dev
+      MYSQL_PASSWORD: "bitrix_dev_pass"
+      MYSQL_ROOT_PASSWORD: "bitrix_root_pass"
+    volumes:
+      - /opt/dev/crm/bitrix-mysql:/var/lib/mysql
+    networks:
+      - dev-frontend
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # === Odoo Community 17 ===
+  # ERP + CRM + HR + Accounting
+  # UI: odoo.dev.{{ domain }}
+  odoo:
+    image: odoo:17.0
+    container_name: odoo
+    restart: unless-stopped
+    environment:
+      HOST: "${PG_HOST}"
+      PORT: "${PG_PORT}"
+      USER: odoo_dev
+      PASSWORD: "odoo_dev_pass"
+    volumes:
+      - /opt/dev/crm/odoo-data:/var/lib/odoo
+      - /opt/dev/crm/odoo-addons:/mnt/extra-addons
+    ports:
+      - "3021:8069"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.odoo.rule=Host(`odoo.dev.{{ domain }}`)"
+      - "traefik.http.services.odoo.loadbalancer.server.port=8069"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+networks:
+  dev-frontend:
+    external: true

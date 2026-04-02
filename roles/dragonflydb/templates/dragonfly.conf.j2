@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# DragonflyDB Configuration - Grupa Festiwale
+
+# Bind only to internal VLAN 30 IP + localhost
+--bind 10.10.30.3
+--bind 127.0.0.1
+--port {{ dragonflydb_port }}
+
+# Authentication
+--requirepass {{ vault_dragonflydb_password }}
+
+# Memory
+--maxmemory {{ dragonflydb_maxmemory }}
+--maxmemory_policy allkeys-lru
+
+# Persistence
+--dir /var/lib/dragonfly
+--dbfilename dump
+
+# Performance
+--proactor_threads 4
+
+# Logging
+--log_dir /var/log/dragonfly

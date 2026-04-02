@@ -1,0 +1,118 @@
+---
+- name: Create monitoring directories
+  ansible.builtin.file:
+    path: "/opt/monitoring/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - prometheus
+    - grafana
+    - alertmanager
+    - loki
+
+- name: Deploy Prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /opt/monitoring/prometheus/prometheus.yml
+    mode: "0644"
+
+- name: Deploy Alertmanager config
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: /opt/monitoring/alertmanager/alertmanager.yml
+    mode: "0644"
+
+- name: Deploy alert rules
+  ansible.builtin.template:
+    src: alert_rules.yml.j2
+    dest: /opt/monitoring/prometheus/alert_rules.yml
+    mode: "0644"
+
+- name: Deploy Loki config
+  ansible.builtin.template:
+    src: loki.yml.j2
+    dest: /opt/monitoring/loki/loki.yml
+    mode: "0644"
+
+- name: Download Prometheus
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v2.54.0/prometheus-2.54.0.linux-amd64.tar.gz"
+    dest: /tmp/prometheus.tar.gz
+    mode: "0644"
+
+- name: Extract Prometheus
+  ansible.builtin.unarchive:
+    src: /tmp/prometheus.tar.gz
+    dest: /opt/monitoring/prometheus/
+    remote_src: true
+    extra_opts: [--strip-components=1]
+
+- name: Create Prometheus systemd service
+  ansible.builtin.template:
+    src: prometheus.service.j2
+    dest: /etc/systemd/system/prometheus.service
+    mode: "0644"
+
+- name: Download Alertmanager
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/alertmanager/releases/download/v0.27.0/alertmanager-0.27.0.linux-amd64.tar.gz"
+    dest: /tmp/alertmanager.tar.gz
+    mode: "0644"
+
+- name: Extract Alertmanager
+  ansible.builtin.unarchive:
+    src: /tmp/alertmanager.tar.gz
+    dest: /opt/monitoring/alertmanager/
+    remote_src: true
+    extra_opts: [--strip-components=1]
+
+- name: Create Alertmanager systemd service
+  ansible.builtin.template:
+    src: alertmanager.service.j2
+    dest: /etc/systemd/system/alertmanager.service
+    mode: "0644"
+
+- name: Download Grafana
+  ansible.builtin.get_url:
+    url: "https://dl.grafana.com/oss/release/grafana_11.2.0_amd64.deb"
+    dest: /tmp/grafana.deb
+    mode: "0644"
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    deb: /tmp/grafana.deb
+    state: present
+
+- name: Download Loki
+  ansible.builtin.get_url:
+    url: "https://github.com/grafana/loki/releases/download/v3.1.0/loki-linux-amd64.zip"
+    dest: /tmp/loki.zip
+    mode: "0644"
+
+- name: Install unzip
+  ansible.builtin.apt:
+    name: unzip
+    state: present
+
+- name: Extract Loki
+  ansible.builtin.command: unzip -o /tmp/loki.zip -d /opt/monitoring/loki/
+  args:
+    creates: /opt/monitoring/loki/loki-linux-amd64
+
+- name: Create Loki systemd service
+  ansible.builtin.template:
+    src: loki.service.j2
+    dest: /etc/systemd/system/loki.service
+    mode: "0644"
+
+- name: Enable and start all monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - prometheus
+    - alertmanager
+    - grafana-server
+    - loki

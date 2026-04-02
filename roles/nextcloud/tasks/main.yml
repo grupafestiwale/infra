@@ -1,0 +1,69 @@
+---
+- name: Install SSHFS for StorageBox mount
+  ansible.builtin.apt:
+    name:
+      - sshfs
+      - fuse3
+    state: present
+
+- name: Create StorageBox mount point
+  ansible.builtin.file:
+    path: "{{ storagebox_mount }}"
+    state: directory
+    mode: "0755"
+
+- name: Create StorageBox subdirectories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ storagebox_nextcloud_path }}"
+    - "{{ storagebox_paperless_path }}"
+
+- name: Configure StorageBox SSHFS mount in fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "{{ vault_storagebox_user }}@{{ vault_storagebox_host }}:/ {{ storagebox_mount }} fuse.sshfs _netdev,allow_other,IdentityFile=/root/.ssh/storagebox_key,reconnect,ServerAliveInterval=15,ServerAliveCountMax=3 0 0"
+    state: present
+  notify: mount storagebox
+
+- name: Generate SSH key for StorageBox
+  ansible.builtin.command: >
+    ssh-keygen -t ed25519 -f /root/.ssh/storagebox_key -N ""
+  args:
+    creates: /root/.ssh/storagebox_key
+
+- name: Display StorageBox SSH public key
+  ansible.builtin.command: cat /root/.ssh/storagebox_key.pub
+  register: storagebox_pubkey
+  changed_when: false
+
+- name: Show StorageBox key instruction
+  ansible.builtin.debug:
+    msg: |
+      Add this SSH key to your Hetzner StorageBox:
+      {{ storagebox_pubkey.stdout }}
+
+      Via Hetzner Robot → Storage Box → SSH Keys
+
+- name: Create NextCloud Docker directories
+  ansible.builtin.file:
+    path: "/opt/nextcloud/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - config
+    - apps
+
+- name: Deploy NextCloud docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/nextcloud/docker-compose.yml
+    mode: "0640"
+
+- name: Start NextCloud
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: /opt/nextcloud
+  changed_when: true

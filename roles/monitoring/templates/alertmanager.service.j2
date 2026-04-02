@@ -1,0 +1,14 @@
+[Unit]
+Description=Alertmanager
+After=network.target
+
+[Service]
+User=root
+ExecStart=/opt/monitoring/alertmanager/alertmanager \
+  --config.file=/opt/monitoring/alertmanager/alertmanager.yml \
+  --web.listen-address=:{{ alertmanager_port }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

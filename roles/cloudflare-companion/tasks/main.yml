@@ -1,0 +1,21 @@
+---
+# Cloudflare Companion auto-creates DNS records when Docker containers start
+# Works on any VM with Docker + Traefik labels
+
+- name: Deploy Cloudflare Companion
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/cloudflare-companion/docker-compose.yml
+    mode: "0640"
+
+- name: Create Cloudflare Companion directory
+  ansible.builtin.file:
+    path: /opt/cloudflare-companion
+    state: directory
+    mode: "0755"
+
+- name: Start Cloudflare Companion
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: /opt/cloudflare-companion
+  changed_when: true

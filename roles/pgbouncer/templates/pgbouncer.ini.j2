@@ -1,0 +1,36 @@
+; {{ ansible_managed }}
+; PgBouncer Configuration - Connection Pooling for PostgreSQL
+
+[databases]
+{% for db in postgresql_databases %}
+{{ db.name }} = host=127.0.0.1 port={{ postgresql_port }} dbname={{ db.name }}
+{% endfor %}
+
+[pgbouncer]
+listen_addr = 10.10.30.3,127.0.0.1
+listen_port = {{ pgbouncer_port }}
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+
+; Pool settings
+pool_mode = transaction
+max_client_conn = {{ pgbouncer_max_client_conn }}
+default_pool_size = {{ pgbouncer_default_pool_size }}
+min_pool_size = 5
+reserve_pool_size = 10
+reserve_pool_timeout = 3
+
+; Timeouts
+server_idle_timeout = 600
+client_idle_timeout = 0
+query_timeout = 0
+
+; Logging
+log_connections = 1
+log_disconnections = 1
+log_pooler_errors = 1
+stats_period = 60
+
+; Admin
+admin_users = postgres
+stats_users = exporter

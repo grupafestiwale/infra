@@ -1,0 +1,128 @@
+# {{ ansible_managed }}
+# DEV STACK: Agentic Frameworks
+# Usage: cd /opt/dev/agentic && docker compose up -d
+# RAM: ~6 GB total
+
+services:
+  # === DeerFlow 2.0 (ByteDance) ===
+  # Super agent harness - orchestrator
+  # UI: deerflow.dev.{{ domain }}
+  deerflow:
+    image: ghcr.io/bytedance/deer-flow:latest
+    container_name: deerflow
+    restart: unless-stopped
+    environment:
+      # LLM Configuration
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_API_BASE: "${LITELLM_URL}"
+      # Search (optional)
+      TAVILY_API_KEY: ""
+    volumes:
+      - /opt/dev/agentic/deerflow-data:/app/data
+    ports:
+      - "3030:3000"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.deerflow.rule=Host(`deerflow.dev.{{ domain }}`)"
+      - "traefik.http.services.deerflow.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # === Hermes Agent (Nous Research) ===
+  # Self-improving agent with memory + messaging gateways
+  # UI: hermes.dev.{{ domain }}
+  hermes:
+    image: ghcr.io/nousresearch/hermes-agent:latest
+    container_name: hermes-agent
+    restart: unless-stopped
+    environment:
+      # LLM Provider
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+      DEFAULT_MODEL: "anthropic/claude-sonnet-4-20250514"
+      # Or use LiteLLM as proxy:
+      OPENAI_API_KEY: "sk-litellm"
+      OPENAI_API_BASE: "${LITELLM_URL}"
+      # Memory
+      MEMORY_BACKEND: "file"
+      # Messaging gateways (configure as needed)
+      # TELEGRAM_BOT_TOKEN: ""
+      # SLACK_BOT_TOKEN: ""
+      # DISCORD_TOKEN: ""
+    volumes:
+      - /opt/dev/agentic/hermes-data:/app/data
+      - /opt/dev/agentic/hermes-skills:/app/skills
+    ports:
+      - "3031:8080"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hermes.rule=Host(`hermes.dev.{{ domain }}`)"
+      - "traefik.http.services.hermes.loadbalancer.server.port=8080"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # === CrewAI ===
+  # Multi-agent teams with roles (Researcher, Writer, etc.)
+  # UI: crew.dev.{{ domain }}
+  crewai:
+    image: ghcr.io/crewaiinc/crewai:latest
+    container_name: crewai
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: "sk-litellm"
+      OPENAI_API_BASE: "${LITELLM_URL}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+    volumes:
+      - /opt/dev/agentic/crewai-projects:/app/projects
+    ports:
+      - "3032:8000"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.crewai.rule=Host(`crew.dev.{{ domain }}`)"
+      - "traefik.http.services.crewai.loadbalancer.server.port=8000"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # === OpenViking (Volcengine) ===
+  # Context database for AI agents - hierarchical memory
+  # API: viking.dev.{{ domain }}
+  openviking:
+    image: ghcr.io/volcengine/openviking:latest
+    container_name: openviking
+    restart: unless-stopped
+    environment:
+      EMBEDDING_PROVIDER: "openai"
+      EMBEDDING_API_KEY: "sk-litellm"
+      EMBEDDING_API_BASE: "${LITELLM_URL}"
+      EMBEDDING_MODEL: "text-embedding-3-small"
+      STORAGE_PATH: /data
+    volumes:
+      - /opt/dev/agentic/openviking-data:/data
+    ports:
+      - "3033:8000"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.viking.rule=Host(`viking.dev.{{ domain }}`)"
+      - "traefik.http.services.viking.loadbalancer.server.port=8000"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+networks:
+  dev-frontend:
+    external: true

@@ -1,0 +1,16 @@
+[Unit]
+Description=Prometheus
+After=network.target
+
+[Service]
+User=root
+ExecStart=/opt/monitoring/prometheus/prometheus \
+  --config.file=/opt/monitoring/prometheus/prometheus.yml \
+  --storage.tsdb.path=/opt/monitoring/prometheus/data \
+  --storage.tsdb.retention.time=30d \
+  --web.listen-address=:{{ prometheus_port }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

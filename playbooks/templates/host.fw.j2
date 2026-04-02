@@ -1,0 +1,15 @@
+[OPTIONS]
+enable: 1
+
+[RULES]
+# Allow SSH (will be locked to Tailscale later)
+IN ACCEPT -p tcp -dport 22 -log nolog
+# Allow Proxmox Web UI
+IN ACCEPT -p tcp -dport 8006 -log nolog
+# Allow ICMP ping
+IN ACCEPT -p icmp
+# Allow Tailscale (WireGuard UDP)
+IN ACCEPT -p udp -dport 41641 -log nolog
+# Allow established connections
+IN ACCEPT -m state --state ESTABLISHED,RELATED
+# Drop everything else (policy)

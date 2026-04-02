@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# Cloudflare Companion for VM-05 DEV
+# Auto-creates *.dev.grupafestiwale.pl DNS records
+
+services:
+  cloudflare-companion-dev:
+    image: tiredofit/traefik-cloudflare-companion:latest
+    container_name: cf-companion-dev
+    restart: unless-stopped
+    environment:
+      CF_TOKEN: "{{ vault_cloudflare_api_token }}"
+      TARGET_DOMAIN: "{{ vault_cloudflare_tunnel_id }}.cfargotunnel.com"
+      DOMAIN1: "dev.{{ domain }}"
+      DOMAIN1_ZONE_ID: "{{ vault_cloudflare_zone_id }}"
+      DOMAIN1_PROXIED: "true"
+      TRAEFIK_VERSION: 3
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

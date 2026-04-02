@@ -1,0 +1,19 @@
+---
+# FAZA 1: OpenBao (Vault) setup
+# Dependencies: Proxmox + LXC-00 created and running
+#
+# Usage: ansible-playbook playbooks/01-vault.yml
+
+- name: "FAZA 1 - LXC-00 OpenBao Vault"
+  hosts: lxc_vault
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include OpenBao role
+      ansible.builtin.include_role:
+        name: openbao

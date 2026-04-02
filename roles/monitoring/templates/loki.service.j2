@@ -1,0 +1,13 @@
+[Unit]
+Description=Grafana Loki
+After=network.target
+
+[Service]
+User=root
+ExecStart=/opt/monitoring/loki/loki-linux-amd64 \
+  --config.file=/opt/monitoring/loki/loki.yml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

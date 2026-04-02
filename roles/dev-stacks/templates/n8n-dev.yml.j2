@@ -1,0 +1,40 @@
+# {{ ansible_managed }}
+# DEV STACK: N8N Development
+# Usage: cd /opt/dev/n8n-dev && docker compose up -d
+# RAM: ~1 GB
+
+services:
+  n8n-dev:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n-dev
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: "${PG_HOST}"
+      DB_POSTGRESDB_PORT: "${PG_PORT}"
+      DB_POSTGRESDB_DATABASE: n8n_dev
+      DB_POSTGRESDB_USER: n8n_dev
+      DB_POSTGRESDB_PASSWORD: "n8n_dev_pass"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      WEBHOOK_URL: "https://n8n.dev.{{ domain }}"
+      GENERIC_TIMEZONE: "Europe/Warsaw"
+      # Expose AI nodes
+      N8N_AI_ENABLED: "true"
+    volumes:
+      - /opt/dev/n8n-dev/data:/home/node/.n8n
+    ports:
+      - "3040:5678"
+    networks:
+      - dev-frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n-dev.rule=Host(`n8n.dev.{{ domain }}`)"
+      - "traefik.http.services.n8n-dev.loadbalancer.server.port=5678"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+networks:
+  dev-frontend:
+    external: true

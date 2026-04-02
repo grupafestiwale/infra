@@ -1,0 +1,37 @@
+---
+- name: Create dev stack directories
+  ansible.builtin.file:
+    path: "/opt/dev/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - coding
+    - crm
+    - agentic
+    - browser
+    - n8n-dev
+    - scripts
+
+- name: Deploy all dev stack compose files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/opt/dev/{{ item.dest }}"
+    mode: "0640"
+  loop:
+    - { src: "coding.yml.j2", dest: "coding/docker-compose.yml" }
+    - { src: "crm.yml.j2", dest: "crm/docker-compose.yml" }
+    - { src: "agentic.yml.j2", dest: "agentic/docker-compose.yml" }
+    - { src: "browser.yml.j2", dest: "browser/docker-compose.yml" }
+    - { src: "n8n-dev.yml.j2", dest: "n8n-dev/docker-compose.yml" }
+
+- name: Deploy dev management script
+  ansible.builtin.template:
+    src: dev-manage.sh.j2
+    dest: /opt/dev/scripts/dev-manage.sh
+    mode: "0755"
+
+- name: Create shared .env file for dev stacks
+  ansible.builtin.template:
+    src: dev.env.j2
+    dest: /opt/dev/.env
+    mode: "0600"

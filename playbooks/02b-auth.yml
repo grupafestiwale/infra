@@ -1,0 +1,20 @@
+---
+# FAZA 2b: LXC-06 AUTH - Authentik + Entra ID Federation
+# Dependencies: PostgreSQL (LXC-02), DragonflyDB (LXC-02), Traefik (LXC-01)
+# Run AFTER 03-database.yml (needs authentik DB)
+#
+# Usage: ansible-playbook playbooks/02b-auth.yml
+
+- name: "FAZA 2b - LXC-06 Authentik Identity Provider"
+  hosts: lxc_auth
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include Authentik role
+      ansible.builtin.include_role:
+        name: authentik

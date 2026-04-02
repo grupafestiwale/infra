@@ -1,0 +1,23 @@
+---
+- name: Create Paperless directories
+  ansible.builtin.file:
+    path: "/opt/paperless/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - data
+    - media
+    - consume
+    - export
+
+- name: Deploy Paperless docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/paperless/docker-compose.yml
+    mode: "0640"
+
+- name: Start Paperless-NGX
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: /opt/paperless
+  changed_when: true

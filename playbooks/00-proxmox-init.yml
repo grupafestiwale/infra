@@ -1,0 +1,335 @@
+---
+# FAZA 0: Proxmox VE 9.1+ initialization (Debian 13 Trixie)
+# Run ONCE on fresh Proxmox install
+# Prerequisites: SSH access to Hetzner server with root
+#
+# Usage: ansible-playbook playbooks/00-proxmox-init.yml
+
+- name: "FAZA 0 - Proxmox VE + ZFS + SDN"
+  hosts: proxmox
+  become: true
+  gather_facts: true
+
+  tasks:
+    # === 0.1 PROXMOX REPO + UPDATES ===
+    - name: Verify Proxmox VE 9.x
+      ansible.builtin.command: pveversion
+      register: pve_version
+      changed_when: false
+
+    - name: Fail if not PVE 9.x
+      ansible.builtin.fail:
+        msg: "Expected Proxmox VE 9.x, got: {{ pve_version.stdout }}. This playbook targets PVE 9.1+ (Debian 13 Trixie)."
+      when: "'pve-manager/9' not in pve_version.stdout"
+
+    - name: Remove enterprise repos (no subscription)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/pve-enterprise.list
+        - /etc/apt/sources.list.d/ceph-enterprise.list
+
+    - name: Add Proxmox no-subscription repo (Trixie)
+      ansible.builtin.apt_repository:
+        repo: "deb http://download.proxmox.com/debian/pve trixie pve-no-subscription"
+        filename: pve-no-subscription
+        state: present
+
+    - name: Add Proxmox Ceph no-subscription repo (Trixie)
+      ansible.builtin.apt_repository:
+        repo: "deb http://download.proxmox.com/debian/ceph-squid trixie no-subscription"
+        filename: ceph-no-subscription
+        state: present
+
+    - name: Update and upgrade Proxmox
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+
+    # === 0.2 ZFS MIRROR SETUP ===
+    - name: Check if ZFS pool exists
+      ansible.builtin.command: zpool list {{ zfs_pool }}
+      register: zpool_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display ZFS pool status
+      ansible.builtin.debug:
+        msg: "ZFS pool '{{ zfs_pool }}' already exists — skipping creation"
+      when: zpool_check.rc == 0
+
+    # Note: ZFS pool is typically created during Proxmox install
+    # If not, uncomment below:
+    # - name: Create ZFS mirror pool
+    #   ansible.builtin.command: >
+    #     zpool create -f -o ashift=12
+    #     -O acltype=posixacl -O compression=lz4
+    #     -O dnodesize=auto -O normalization=formD
+    #     -O relatime=on -O xattr=sa
+    #     {{ zfs_pool }} mirror {{ zfs_disks | join(' ') }}
+    #   when: zpool_check.rc != 0
+
+    - name: Create ZFS datasets for LXC/VM storage
+      ansible.builtin.command: "zfs create -o mountpoint=none {{ zfs_pool }}/{{ item }}"
+      loop:
+        - data
+        - data/db
+        - data/files
+      register: zfs_create
+      failed_when: zfs_create.rc != 0 and 'dataset already exists' not in zfs_create.stderr
+      changed_when: zfs_create.rc == 0
+
+    - name: Set ZFS dataset properties for DB (optimized for PostgreSQL)
+      ansible.builtin.command: "zfs set {{ item }} {{ zfs_pool }}/data/db"
+      loop:
+        - recordsize=8K
+        - primarycache=metadata
+        - logbias=latency
+        - compression=lz4
+      changed_when: true
+
+    - name: Set ZFS dataset properties for files
+      ansible.builtin.command: "zfs set {{ item }} {{ zfs_pool }}/data/files"
+      loop:
+        - recordsize=1M
+        - compression=lz4
+      changed_when: true
+
+    # === 0.3 ZFS AUTO-SNAPSHOT ===
+    - name: Install zfs-auto-snapshot
+      ansible.builtin.apt:
+        name: zfs-auto-snapshot
+        state: present
+
+    - name: Create hourly snapshot cron
+      ansible.builtin.cron:
+        name: "ZFS hourly snapshot"
+        minute: "0"
+        job: "/usr/sbin/zfs-auto-snapshot --quiet --syslog --label=hourly --keep=24 //"
+        user: root
+
+    - name: Create daily snapshot cron
+      ansible.builtin.cron:
+        name: "ZFS daily snapshot"
+        minute: "0"
+        hour: "1"
+        job: "/usr/sbin/zfs-auto-snapshot --quiet --syslog --label=daily --keep=7 //"
+        user: root
+
+    # === 0.4 NETWORK BRIDGES + SDN ===
+    - name: Configure network bridges for VLANs
+      ansible.builtin.template:
+        src: interfaces.j2
+        dest: /etc/network/interfaces
+        mode: "0644"
+        backup: true
+      notify: reload networking
+
+    # === 0.5 PROXMOX FIREWALL ===
+    - name: Enable Proxmox firewall (datacenter level)
+      ansible.builtin.copy:
+        content: |
+          [OPTIONS]
+          enable: 1
+          policy_in: DROP
+          policy_out: ACCEPT
+          log_ratelimit: enabled
+        dest: /etc/pve/firewall/cluster.fw
+        mode: "0640"
+
+    - name: Configure host firewall rules
+      ansible.builtin.template:
+        src: host.fw.j2
+        dest: "/etc/pve/nodes/{{ ansible_hostname }}/host.fw"
+        mode: "0640"
+
+    # === 0.6 PROXMOX HARDENING ===
+    - name: Disable SSH password auth on Proxmox host
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?PasswordAuthentication"
+        line: "PasswordAuthentication no"
+      notify: restart sshd
+
+    - name: Install useful tools on host
+      ansible.builtin.apt:
+        name:
+          - htop
+          - iotop
+          - tmux
+          - net-tools
+        state: present
+
+    # === 0.7 DOWNLOAD DEBIAN 13 TEMPLATE ===
+    - name: Update container template database
+      ansible.builtin.command: pveam update
+      changed_when: true
+
+    - name: Find latest Debian 13 LXC template
+      ansible.builtin.shell: >
+        pveam available --section system | grep 'debian-13-standard' | tail -1 | awk '{print $2}'
+      register: debian13_template
+      changed_when: false
+
+    - name: Download Debian 13 LXC template
+      ansible.builtin.command: "pveam download local {{ debian13_template.stdout }}"
+      register: template_download
+      failed_when: template_download.rc != 0 and 'already exists' not in template_download.stderr
+      changed_when: template_download.rc == 0
+
+    - name: Set LXC template fact
+      ansible.builtin.set_fact:
+        lxc_template: "local:vztmpl/{{ debian13_template.stdout }}"
+
+    # === 0.8 CREATE LXC CONTAINERS ===
+    - name: Create LXC-00 VAULT
+      ansible.builtin.command: >
+        pct create {{ nodes['lxc-00-vault'].proxmox_vmid | default(100) }}
+        {{ lxc_template }}
+        --hostname lxc-00-vault
+        --cores {{ nodes['lxc-00-vault'].cores }}
+        --memory {{ nodes['lxc-00-vault'].memory }}
+        --rootfs local-zfs:{{ nodes['lxc-00-vault'].rootfs_size }}
+        --net0 name=eth0,bridge=vmbr60,ip=10.10.60.7/24,gw=10.10.60.1
+        --unprivileged 1
+        --onboot 1
+        --startup order=1
+        --description "{{ nodes['lxc-00-vault'].description }}"
+      register: lxc00_create
+      failed_when: lxc00_create.rc != 0 and 'already exists' not in lxc00_create.stderr
+      changed_when: lxc00_create.rc == 0
+
+    - name: Create LXC-01 CORE (dual NIC)
+      ansible.builtin.command: >
+        pct create 101
+        {{ lxc_template }}
+        --hostname lxc-01-core
+        --cores {{ nodes['lxc-01-core'].cores }}
+        --memory {{ nodes['lxc-01-core'].memory }}
+        --rootfs local-zfs:{{ nodes['lxc-01-core'].rootfs_size }}
+        --net0 name=eth0,bridge=vmbr10,ip=10.10.10.2/24,gw=10.10.10.1
+        --net1 name=eth1,bridge=vmbr20,ip=10.10.20.2/24
+        --unprivileged 1
+        --onboot 1
+        --startup order=2
+        --description "{{ nodes['lxc-01-core'].description }}"
+      register: lxc01_create
+      failed_when: lxc01_create.rc != 0 and 'already exists' not in lxc01_create.stderr
+      changed_when: lxc01_create.rc == 0
+
+    - name: Create LXC-02 DB
+      ansible.builtin.command: >
+        pct create 102
+        {{ lxc_template }}
+        --hostname lxc-02-db
+        --cores {{ nodes['lxc-02-db'].cores }}
+        --memory {{ nodes['lxc-02-db'].memory }}
+        --rootfs local-zfs:{{ nodes['lxc-02-db'].rootfs_size }}
+        --mp0 {{ zfs_pool }}/data/db,mp=/var/lib/postgresql
+        --net0 name=eth0,bridge=vmbr30,ip=10.10.30.3/24,gw=10.10.30.1
+        --unprivileged 1
+        --onboot 1
+        --startup order=3
+        --description "{{ nodes['lxc-02-db'].description }}"
+      register: lxc02_create
+      failed_when: lxc02_create.rc != 0 and 'already exists' not in lxc02_create.stderr
+      changed_when: lxc02_create.rc == 0
+
+    - name: Create LXC-03 DATA
+      ansible.builtin.command: >
+        pct create 103
+        {{ lxc_template }}
+        --hostname lxc-03-data
+        --cores {{ nodes['lxc-03-data'].cores }}
+        --memory {{ nodes['lxc-03-data'].memory }}
+        --rootfs local-zfs:{{ nodes['lxc-03-data'].rootfs_size }}
+        --mp0 {{ zfs_pool }}/data/files,mp=/srv/data
+        --net0 name=eth0,bridge=vmbr30,ip=10.10.30.4/24,gw=10.10.30.1
+        --features nesting=1
+        --unprivileged 1
+        --onboot 1
+        --startup order=4
+        --description "{{ nodes['lxc-03-data'].description }}"
+      register: lxc03_create
+      failed_when: lxc03_create.rc != 0 and 'already exists' not in lxc03_create.stderr
+      changed_when: lxc03_create.rc == 0
+
+    - name: Create LXC-06 AUTH
+      ansible.builtin.command: >
+        pct create 106
+        {{ lxc_template }}
+        --hostname lxc-06-auth
+        --cores {{ nodes['lxc-06-auth'].cores }}
+        --memory {{ nodes['lxc-06-auth'].memory }}
+        --rootfs local-zfs:{{ nodes['lxc-06-auth'].rootfs_size }}
+        --net0 name=eth0,bridge=vmbr10,ip=10.10.10.8/24,gw=10.10.10.1
+        --net1 name=eth1,bridge=vmbr20,ip=10.10.20.8/24
+        --features nesting=1
+        --unprivileged 1
+        --onboot 1
+        --startup order=4
+        --description "{{ nodes['lxc-06-auth'].description }}"
+      register: lxc06_create
+      failed_when: lxc06_create.rc != 0 and 'already exists' not in lxc06_create.stderr
+      changed_when: lxc06_create.rc == 0
+
+    # === 0.9 CREATE VMs ===
+    - name: Create VM-04 AI PROD
+      ansible.builtin.command: >
+        qm create 104
+        --name vm-04-ai-prod
+        --cores {{ nodes['vm-04-ai-prod'].cores }}
+        --memory {{ nodes['vm-04-ai-prod'].memory }}
+        --bios ovmf
+        --machine q35
+        --scsihw virtio-scsi-single
+        --scsi0 local-zfs:{{ nodes['vm-04-ai-prod'].disk_size }},iothread=1,discard=on
+        --net0 virtio,bridge=vmbr40
+        --ide2 local:iso/debian-13-netinst.iso,media=cdrom
+        --boot order=scsi0;ide2
+        --onboot 1
+        --startup order=5
+        --description "{{ nodes['vm-04-ai-prod'].description }}"
+      register: vm04_create
+      failed_when: vm04_create.rc != 0 and 'already exists' not in vm04_create.stderr
+      changed_when: vm04_create.rc == 0
+
+    - name: Create VM-05 DEV
+      ansible.builtin.command: >
+        qm create 105
+        --name vm-05-dev
+        --cores {{ nodes['vm-05-dev'].cores }}
+        --memory {{ nodes['vm-05-dev'].memory }}
+        --bios ovmf
+        --machine q35
+        --scsihw virtio-scsi-single
+        --scsi0 local-zfs:{{ nodes['vm-05-dev'].disk_size }},iothread=1,discard=on
+        --net0 virtio,bridge=vmbr50
+        --ide2 local:iso/debian-13-netinst.iso,media=cdrom
+        --boot order=scsi0;ide2
+        --onboot 1
+        --startup order=6
+        --description "{{ nodes['vm-05-dev'].description }}"
+      register: vm05_create
+      failed_when: vm05_create.rc != 0 and 'already exists' not in vm05_create.stderr
+      changed_when: vm05_create.rc == 0
+
+    # === 0.10 START LXC CONTAINERS ===
+    - name: Start all LXC containers
+      ansible.builtin.command: "pct start {{ item }}"
+      loop: [100, 101, 102, 103, 106]
+      register: lxc_start
+      failed_when: lxc_start.rc != 0 and 'already running' not in lxc_start.stderr
+      changed_when: lxc_start.rc == 0
+
+  handlers:
+    - name: reload networking
+      ansible.builtin.service:
+        name: networking
+        state: restarted
+
+    - name: restart sshd
+      ansible.builtin.systemd:
+        name: sshd
+        state: restarted

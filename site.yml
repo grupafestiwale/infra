@@ -1,0 +1,48 @@
+---
+# GRUPA FESTIWALE - Complete Infrastructure Deployment
+#
+# Runs all phases in dependency order.
+#
+# Usage:
+#   Full deployment:   ansible-playbook site.yml
+#   Single phase:      ansible-playbook playbooks/05-ai-prod.yml
+#   Dry run:           ansible-playbook site.yml --check
+#
+# Prerequisites:
+#   1. Copy group_vars/vault.yml.example to group_vars/vault.yml
+#   2. Fill in all secrets
+#   3. Encrypt: ansible-vault encrypt group_vars/vault.yml
+#   4. Download Debian 12 ISO to Proxmox (for VMs)
+
+- name: "FAZA 0 - Proxmox VE + ZFS + SDN"
+  ansible.builtin.import_playbook: playbooks/00-proxmox-init.yml
+
+- name: "FAZA 1 - OpenBao Vault"
+  ansible.builtin.import_playbook: playbooks/01-vault.yml
+
+- name: "FAZA 2 - Core (Tailscale + Traefik + Cloudflared + Monitoring)"
+  ansible.builtin.import_playbook: playbooks/02-core.yml
+
+- name: "FAZA 3 - Database (PostgreSQL + DragonflyDB + PgBouncer)"
+  ansible.builtin.import_playbook: playbooks/03-database.yml
+
+- name: "FAZA 3b - Authentik Identity Provider (SSO + Entra ID)"
+  ansible.builtin.import_playbook: playbooks/02b-auth.yml
+
+- name: "FAZA 4 - Data (NextCloud + Paperless-NGX)"
+  ansible.builtin.import_playbook: playbooks/04-data.yml
+
+- name: "FAZA 5 - AI Production"
+  ansible.builtin.import_playbook: playbooks/05-ai-prod.yml
+
+- name: "FAZA 6 - Development Environment"
+  ansible.builtin.import_playbook: playbooks/06-dev.yml
+
+- name: "FAZA 7 - Monitoring (Prometheus + Grafana + Loki)"
+  ansible.builtin.import_playbook: playbooks/07-monitoring.yml
+
+- name: "FAZA 8 - Backup (PBS + StorageBox)"
+  ansible.builtin.import_playbook: playbooks/08-backup.yml
+
+- name: "FAZA 9 - Security Hardening"
+  ansible.builtin.import_playbook: playbooks/09-hardening.yml

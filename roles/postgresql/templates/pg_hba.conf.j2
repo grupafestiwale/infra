@@ -1,0 +1,35 @@
+# {{ ansible_managed }}
+# PostgreSQL Client Authentication Configuration
+# SECURITY: Only allow connections from specific VLANs
+
+# Local connections
+local   all             postgres                                peer
+local   all             all                                     peer
+
+# Localhost
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+
+# VLAN 30 - Data (LXC-03 NextCloud, Paperless)
+host    nextcloud       nextcloud       10.10.30.4/32           scram-sha-256
+host    paperless       paperless       10.10.30.4/32           scram-sha-256
+
+# VLAN 10 - Auth (LXC-06 Authentik)
+host    authentik       authentik       10.10.10.8/32           scram-sha-256
+
+# VLAN 40 - Apps (VM-04 AI Production)
+host    n8n             n8n             10.10.40.5/32           scram-sha-256
+host    dify            dify            10.10.40.5/32           scram-sha-256
+host    agentdb         agentdb         10.10.40.5/32           scram-sha-256
+host    litellm         litellm         10.10.40.5/32           scram-sha-256
+host    lobechat        lobechat        10.10.40.5/32           scram-sha-256
+host    borys           borys           10.10.40.5/32           scram-sha-256
+host    rekrutacja      rekrutacja      10.10.40.5/32           scram-sha-256
+
+# VLAN 50 - Dev (VM-05 Development)
+host    all             all             10.10.50.6/32           scram-sha-256
+
+# Replication (future - for standby)
+# host  replication     replicator      10.10.30.0/24           scram-sha-256
+
+# DENY everything else (implicit, but explicit for clarity)

@@ -1,0 +1,36 @@
+---
+- name: Download cloudflared
+  ansible.builtin.get_url:
+    url: "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb"
+    dest: /tmp/cloudflared.deb
+    mode: "0644"
+
+- name: Install cloudflared
+  ansible.builtin.apt:
+    deb: /tmp/cloudflared.deb
+    state: present
+
+- name: Create cloudflared config directory
+  ansible.builtin.file:
+    path: /etc/cloudflared
+    state: directory
+    mode: "0755"
+
+- name: Configure cloudflared tunnel
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/cloudflared/config.yml
+    mode: "0644"
+  notify: restart cloudflared
+
+- name: Install cloudflared as service
+  ansible.builtin.command: cloudflared service install
+  register: cf_install
+  failed_when: cf_install.rc != 0 and 'already installed' not in cf_install.stderr
+  changed_when: cf_install.rc == 0
+
+- name: Enable and start cloudflared
+  ansible.builtin.systemd:
+    name: cloudflared
+    enabled: true
+    state: started

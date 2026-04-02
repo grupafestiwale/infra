@@ -1,0 +1,41 @@
+# {{ ansible_managed }}
+# DEV STACK: Headless Browser for Agents
+# Usage: cd /opt/dev/browser && docker compose up -d
+# RAM: ~512 MB
+
+services:
+  # === Lightpanda Browser ===
+  # Headless browser built for AI agents
+  # 16x less RAM than Chrome, 9x faster
+  # CDP-compatible (works with Playwright/Puppeteer)
+  # API: lightpanda:9222 (internal, used by other agents)
+  lightpanda:
+    image: lightpanda/browser:latest
+    container_name: lightpanda
+    restart: unless-stopped
+    command: ["serve", "--host", "0.0.0.0", "--port", "9222"]
+    ports:
+      - "9222:9222"
+    networks:
+      - dev-frontend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Optional: Browser Use agent (connects to Lightpanda)
+  # Provides high-level "browse this website" API for agents
+  # browser-use:
+  #   image: ghcr.io/browser-use/browser-use:latest
+  #   container_name: browser-use
+  #   restart: unless-stopped
+  #   environment:
+  #     BROWSER_CDP_URL: "ws://lightpanda:9222"
+  #     OPENAI_API_KEY: "sk-litellm"
+  #     OPENAI_API_BASE: "${LITELLM_URL}"
+  #   networks:
+  #     - dev-frontend
+
+networks:
+  dev-frontend:
+    external: true

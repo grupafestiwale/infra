@@ -1,0 +1,65 @@
+# {{ ansible_managed }}
+# Prometheus Configuration - Grupa Festiwale
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "localhost:{{ alertmanager_port }}"
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:{{ prometheus_port }}"]
+
+  # Node exporters (CPU, RAM, disk, network)
+  - job_name: node
+    static_configs:
+      - targets:
+          - "10.10.60.7:{{ node_exporter_port }}"
+          - "10.10.10.2:{{ node_exporter_port }}"
+          - "10.10.30.3:{{ node_exporter_port }}"
+          - "10.10.30.4:{{ node_exporter_port }}"
+          - "10.10.40.5:{{ node_exporter_port }}"
+          - "10.10.50.6:{{ node_exporter_port }}"
+        labels:
+          env: production
+
+  # PostgreSQL
+  - job_name: postgresql
+    static_configs:
+      - targets: ["10.10.30.3:9187"]
+        labels:
+          instance: lxc-02-db
+
+  # Traefik metrics
+  - job_name: traefik
+    static_configs:
+      - targets:
+          - "10.10.40.5:80"
+          - "10.10.50.6:80"
+        labels:
+          env: production
+    metrics_path: /metrics
+
+  # Docker (cadvisor)
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - "10.10.40.5:8081"
+          - "10.10.50.6:8081"
+
+  # Docker daemon metrics
+  - job_name: docker
+    static_configs:
+      - targets:
+          - "10.10.40.5:9323"
+          - "10.10.50.6:9323"
+          - "10.10.30.4:9323"

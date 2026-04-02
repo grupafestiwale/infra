@@ -1,0 +1,74 @@
+---
+- name: Create AI stack directories
+  ansible.builtin.file:
+    path: "/opt/ai-stack/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - traefik
+    - litellm
+    - dify
+    - n8n
+    - lobechat
+    - ruflo
+    - ollama
+
+- name: Deploy Traefik socket proxy config
+  ansible.builtin.template:
+    src: docker-compose-traefik.yml.j2
+    dest: /opt/ai-stack/traefik/docker-compose.yml
+    mode: "0640"
+
+- name: Deploy LiteLLM config
+  ansible.builtin.template:
+    src: litellm_config.yml.j2
+    dest: /opt/ai-stack/litellm/config.yml
+    mode: "0640"
+
+- name: Deploy main AI stack docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/ai-stack/docker-compose.yml
+    mode: "0640"
+
+- name: Create Docker networks
+  ansible.builtin.command: "docker network create {{ item }}"
+  loop:
+    - frontend
+    - backend
+    - proxy
+  register: net_create
+  failed_when: net_create.rc != 0 and 'already exists' not in net_create.stderr
+  changed_when: net_create.rc == 0
+
+- name: Start Traefik + socket proxy first
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: /opt/ai-stack/traefik
+  changed_when: true
+
+- name: Wait for Traefik to be ready
+  ansible.builtin.wait_for:
+    port: 80
+    delay: 5
+    timeout: 30
+
+- name: Start AI stack
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: /opt/ai-stack
+  changed_when: true
+
+- name: Install cadvisor for monitoring
+  ansible.builtin.command: >
+    docker run -d --name=cadvisor
+    --restart=unless-stopped
+    --volume=/:/rootfs:ro
+    --volume=/var/run:/var/run:ro
+    --volume=/sys:/sys:ro
+    --volume=/var/lib/docker/:/var/lib/docker:ro
+    --publish=8081:8080
+    gcr.io/cadvisor/cadvisor:latest
+  register: cadvisor_create
+  failed_when: cadvisor_create.rc != 0 and 'already in use' not in cadvisor_create.stderr
+  changed_when: cadvisor_create.rc == 0

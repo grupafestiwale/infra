@@ -1,0 +1,32 @@
+# {{ ansible_managed }}
+# NextCloud - Grupa Festiwale
+
+services:
+  nextcloud:
+    image: nextcloud:29-apache
+    container_name: nextcloud
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      POSTGRES_HOST: "10.10.30.3"
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: "{{ vault_pg_nextcloud_password }}"
+      REDIS_HOST: "10.10.30.3"
+      REDIS_PORT: "{{ dragonflydb_port }}"
+      REDIS_HOST_PASSWORD: "{{ vault_dragonflydb_password }}"
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: "{{ vault_pg_nextcloud_password }}"
+      NEXTCLOUD_TRUSTED_DOMAINS: "files.{{ domain }}"
+      OVERWRITEPROTOCOL: https
+      OVERWRITEHOST: "files.{{ domain }}"
+    volumes:
+      - /opt/nextcloud/config:/var/www/html/config
+      - /opt/nextcloud/apps:/var/www/html/custom_apps
+      - "{{ storagebox_nextcloud_path }}:/var/www/html/data"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/status.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

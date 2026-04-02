@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Cloudflare Tunnel - routes *.grupafestiwale.pl to Traefik
+
+tunnel: {{ vault_cloudflare_tunnel_token }}
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: "*.{{ domain }}"
+    service: http://10.10.20.2:443
+    originRequest:
+      noTLSVerify: true
+  - hostname: "{{ domain }}"
+    service: http://10.10.20.2:443
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404

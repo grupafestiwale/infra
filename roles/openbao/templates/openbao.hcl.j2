@@ -1,0 +1,26 @@
+# OpenBao Configuration - Grupa Festiwale
+# {{ ansible_managed }}
+
+ui = true
+
+storage "file" {
+  path = "/opt/openbao/data"
+}
+
+listener "tcp" {
+  address     = "0.0.0.0:8200"
+  tls_disable = true
+  # TLS disabled because traffic is within isolated VLAN 60
+  # External access only through Tailscale (encrypted)
+}
+
+api_addr = "http://10.10.60.7:8200"
+
+# Disable mlock for LXC compatibility
+disable_mlock = true
+
+# Telemetry for Prometheus
+telemetry {
+  prometheus_retention_time = "30s"
+  disable_hostname          = true
+}

@@ -1,0 +1,17 @@
+# Secrets - NEVER commit
+group_vars/vault.yml
+*.vault
+*.key
+*.pem
+
+# Ansible
+*.retry
+.ansible/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

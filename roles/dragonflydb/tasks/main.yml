@@ -1,0 +1,69 @@
+---
+- name: Download DragonflyDB
+  ansible.builtin.get_url:
+    url: "https://dragonflydb.gateway.scarf.sh/latest/dragonfly-x86_64.tar.gz"
+    dest: /tmp/dragonfly.tar.gz
+    mode: "0644"
+
+- name: Create DragonflyDB directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+    owner: nobody
+    group: nogroup
+  loop:
+    - /var/lib/dragonfly
+    - /etc/dragonfly
+
+- name: Extract DragonflyDB
+  ansible.builtin.unarchive:
+    src: /tmp/dragonfly.tar.gz
+    dest: /usr/local/bin/
+    remote_src: true
+    extra_opts: [--strip-components=1]
+
+- name: Create DragonflyDB config
+  ansible.builtin.template:
+    src: dragonfly.conf.j2
+    dest: /etc/dragonfly/dragonfly.conf
+    mode: "0640"
+    owner: nobody
+    group: nogroup
+  notify: restart dragonfly
+
+- name: Create DragonflyDB systemd service
+  ansible.builtin.copy:
+    content: |
+      [Unit]
+      Description=DragonflyDB - Modern Redis Alternative
+      After=network.target
+
+      [Service]
+      User=nobody
+      Group=nogroup
+      ExecStart=/usr/local/bin/dragonfly --flagfile /etc/dragonfly/dragonfly.conf
+      Restart=always
+      RestartSec=5
+      LimitNOFILE=65536
+      LimitMEMLOCK=infinity
+
+      [Install]
+      WantedBy=multi-user.target
+    dest: /etc/systemd/system/dragonfly.service
+    mode: "0644"
+  notify: restart dragonfly
+
+- name: Enable and start DragonflyDB
+  ansible.builtin.systemd:
+    name: dragonfly
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for DragonflyDB to be ready
+  ansible.builtin.wait_for:
+    host: 10.10.30.3
+    port: "{{ dragonflydb_port }}"
+    delay: 3
+    timeout: 30

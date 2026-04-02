@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# WAL Archiving for Point-in-Time Recovery (PITR)
+
+archive_mode = on
+archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f'
+wal_level = replica

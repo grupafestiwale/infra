@@ -1,0 +1,9 @@
+; {{ ansible_managed }}
+; PgBouncer authentication file
+; Format: "username" "password"
+
+"postgres" "{{ vault_pg_superuser_password }}"
+{% for db in postgresql_databases %}
+"{{ db.name }}" "{{ lookup('vars', 'vault_pg_' + db.name + '_password') }}"
+{% endfor %}
+"exporter" "exporter_monitor"

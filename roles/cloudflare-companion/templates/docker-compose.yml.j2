@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+# Cloudflare Companion - Auto DNS for Docker containers
+# Watches Docker events and creates/removes CNAME records in Cloudflare
+
+services:
+  cloudflare-companion:
+    image: tiredofit/traefik-cloudflare-companion:latest
+    container_name: cloudflare-companion
+    restart: unless-stopped
+    environment:
+      CF_TOKEN: "{{ vault_cloudflare_api_token }}"
+      TARGET_DOMAIN: "{{ vault_cloudflare_tunnel_id }}.cfargotunnel.com"
+      DOMAIN1: "{{ domain }}"
+      DOMAIN1_ZONE_ID: "{{ vault_cloudflare_zone_id }}"
+      DOMAIN1_PROXIED: "true"
+      REFRESH_ENTRIES: "true"
+      TRAEFIK_VERSION: 3
+      ENABLE_TRAEFIK_POLL: "false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

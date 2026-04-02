@@ -1,0 +1,46 @@
+# {{ ansible_managed }}
+# Traefik Development - VM-05 - Auto-Discovery
+
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: socket-proxy-dev
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      SERVICES: 0
+      TASKS: 0
+      NETWORKS: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - dev-proxy
+
+  traefik:
+    image: traefik:v{{ traefik_version }}
+    container_name: traefik-dev
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=dev-frontend"
+      - "--entrypoints.web.address=:80"
+      - "--metrics.prometheus=true"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "{{ traefik_dashboard_port }}:8080"
+    networks:
+      - dev-proxy
+      - dev-frontend
+    depends_on:
+      - socket-proxy
+
+networks:
+  dev-proxy:
+    external: true
+  dev-frontend:
+    external: true

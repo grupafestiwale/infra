@@ -1,0 +1,27 @@
+---
+# FAZA 4: LXC-03 DATA - NextCloud + Paperless-NGX
+# Dependencies: PostgreSQL (LXC-02), Hetzner StorageBox
+#
+# Usage: ansible-playbook playbooks/04-data.yml
+
+- name: "FAZA 4 - LXC-03 DATA"
+  hosts: lxc_data
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include common role
+      ansible.builtin.include_role:
+        name: common
+
+    - name: Include Docker role
+      ansible.builtin.include_role:
+        name: docker
+
+    - name: Include NextCloud role
+      ansible.builtin.include_role:
+        name: nextcloud
+
+    - name: Include Paperless role
+      ansible.builtin.include_role:
+        name: paperless

@@ -1,0 +1,151 @@
+---
+- name: Add PostgreSQL APT key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql-archive-keyring.asc
+    mode: "0644"
+
+- name: Add PostgreSQL repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main"
+    filename: pgdg
+    state: present
+
+- name: Install PostgreSQL 16 and dependencies
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ postgresql_version }}"
+      - "postgresql-{{ postgresql_version }}-pgvector"
+      - postgresql-client
+      - libpq-dev
+      - python3-psycopg2
+    state: present
+    update_cache: true
+
+# RuVector extension (install from source if not available as package)
+- name: Check if RuVector extension exists
+  ansible.builtin.stat:
+    path: "/usr/share/postgresql/{{ postgresql_version }}/extension/ruvector.control"
+  register: ruvector_check
+
+- name: Install build dependencies for RuVector
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - "postgresql-server-dev-{{ postgresql_version }}"
+      - git
+    state: present
+  when: not ruvector_check.stat.exists
+
+# Note: If RuVector is a custom extension, replace this with actual build steps
+# For now we use pgvector as the base and RuVector as the enhanced layer
+- name: Enable pgvector extension (base for RuVector)
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -c "CREATE EXTENSION IF NOT EXISTS vector;"
+  changed_when: true
+
+- name: Configure PostgreSQL for production
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/custom.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: restart postgresql
+
+- name: Configure pg_hba.conf (access control)
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: restart postgresql
+
+- name: Configure PostgreSQL listen addresses
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = 'localhost,10.10.30.3'"
+  notify: restart postgresql
+
+- name: Enable WAL archiving
+  ansible.builtin.template:
+    src: wal_archive.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/wal.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: restart postgresql
+
+- name: Create WAL archive directory
+  ansible.builtin.file:
+    path: /var/lib/postgresql/wal_archive
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Ensure PostgreSQL is running
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: true
+    state: started
+
+- name: Set PostgreSQL superuser password
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -c "ALTER USER postgres PASSWORD '{{ vault_pg_superuser_password }}';"
+  no_log: true
+  changed_when: true
+
+- name: Create application databases and users
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -c "
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ item.name }}') THEN
+          CREATE ROLE {{ item.name }} WITH LOGIN PASSWORD '{{ lookup('vars', 'vault_pg_' + item.name + '_password') }}';
+        END IF;
+      END
+      $$;
+      CREATE DATABASE {{ item.name }} OWNER {{ item.name }};
+    "
+  loop: "{{ postgresql_databases }}"
+  no_log: true
+  register: db_create
+  failed_when: db_create.rc != 0 and 'already exists' not in db_create.stderr
+  changed_when: db_create.rc == 0
+
+- name: Enable vector extension on relevant databases
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -d {{ item }} -c "CREATE EXTENSION IF NOT EXISTS vector;"
+  loop:
+    - dify
+    - agentdb
+  changed_when: true
+
+- name: Install postgres_exporter
+  ansible.builtin.include_tasks: postgres_exporter.yml
+
+- name: Configure daily pg_dump backup
+  ansible.builtin.cron:
+    name: "pg_dumpall daily backup"
+    minute: "0"
+    hour: "3"
+    job: >
+      /usr/bin/pg_dumpall -U postgres |
+      gzip > /var/lib/postgresql/backups/pgdump_$(date +\%Y\%m\%d).sql.gz &&
+      find /var/lib/postgresql/backups/ -name "pgdump_*.sql.gz" -mtime +7 -delete
+    user: postgres
+
+- name: Create backup directory
+  ansible.builtin.file:
+    path: /var/lib/postgresql/backups
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
