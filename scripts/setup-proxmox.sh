@@ -206,69 +206,85 @@ fi
 log "Infrastructure repo ready at $INFRA_DIR"
 
 ###############################################################################
-# STEP 4: CONFIGURE SECRETS
+# STEP 4: CONFIGURE SECRETS (Doppler or manual)
 ###############################################################################
 header "Step 4/6: Configuring Secrets"
 
 VAULT_FILE="$INFRA_DIR/group_vars/vault.yml"
 VAULT_EXAMPLE="$INFRA_DIR/group_vars/vault.yml.example"
+DOPPLER_SCRIPT="$INFRA_DIR/scripts/doppler-to-vault.sh"
 
 if [ -f "$VAULT_FILE" ]; then
     log "vault.yml already exists — skipping secret generation"
-    echo -e "${YELLOW}If you need to re-edit: ansible-vault edit $VAULT_FILE${NC}"
+    echo -e "${YELLOW}To regenerate from Doppler: bash $DOPPLER_SCRIPT${NC}"
 else
-    if [ ! -f "$VAULT_EXAMPLE" ]; then
-        err "vault.yml.example not found at $VAULT_EXAMPLE"
-        exit 1
-    fi
-
-    log "Generating vault.yml from template..."
-    cp "$VAULT_EXAMPLE" "$VAULT_FILE"
-
     echo ""
-    echo -e "${YELLOW}You MUST fill in the secrets before deployment.${NC}"
+    echo -e "${YELLOW}Secret sources:${NC}"
+    echo "  1) Doppler (recommended) — pulls secrets from Doppler project 'infra'"
+    echo "  2) Manual — edit vault.yml by hand + encrypt with ansible-vault"
     echo ""
-    echo "Required secrets:"
-    echo "  - vault_proxmox_ip:            Hetzner public IP"
-    echo "  - vault_cloudflare_api_token:   CF API token (Zone:DNS:Edit)"
-    echo "  - vault_cloudflare_tunnel_id:   CF tunnel ID"
-    echo "  - vault_cloudflare_zone_id:     CF zone ID"
-    echo "  - vault_tailscale_auth_key:     Tailscale auth key"
-    echo "  - vault_pg_password_*:          PostgreSQL passwords (10 DBs)"
-    echo "  - vault_dragonflydb_password:   DragonflyDB password"
-    echo "  - vault_openbao_token:          (auto-generated on first run)"
-    echo "  - vault_openai_api_key:         OpenAI API key"
-    echo "  - vault_anthropic_api_key:      Anthropic API key"
-    echo "  - vault_pbs_*:                  PBS backup credentials"
-    echo "  - vault_storagebox_*:           Hetzner StorageBox credentials"
-    echo ""
+    read -p "Choose [1-2]: " SECRET_CHOICE
 
-    # Interactive or manual?
-    read -p "Edit secrets now in nano? (Y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        nano "$VAULT_FILE"
-    else
-        echo -e "${YELLOW}Edit manually later: nano $VAULT_FILE${NC}"
-    fi
+    case $SECRET_CHOICE in
+        1)
+            # === DOPPLER ===
+            if ! command -v doppler &>/dev/null; then
+                log "Installing Doppler CLI..."
+                curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+                    "https://cli.doppler.com/install.sh" | sh
+            fi
 
-    # Check if user filled in at least the Proxmox IP
-    if grep -q "CHANGE_ME" "$VAULT_FILE" 2>/dev/null; then
-        warn "vault.yml still contains CHANGE_ME placeholders!"
-        read -p "Continue anyway? Deployment will fail for unconfigured services. (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Edit secrets and re-run: bash $INFRA_DIR/scripts/setup-proxmox.sh${NC}"
-            exit 0
-        fi
-    fi
+            if ! doppler whoami &>/dev/null 2>&1; then
+                log "Login to Doppler:"
+                doppler login
+            fi
 
-    # Encrypt vault
-    echo ""
-    log "Encrypting vault.yml with ansible-vault..."
-    echo -e "${YELLOW}Choose a strong vault password (you'll need it for future runs):${NC}"
-    ansible-vault encrypt "$VAULT_FILE"
-    log "vault.yml encrypted"
+            log "Pulling secrets from Doppler..."
+            bash "$DOPPLER_SCRIPT"
+
+            # Check result
+            if [ -f "$VAULT_FILE" ]; then
+                UNFILLED=$(grep -c "CHANGE_ME" "$VAULT_FILE" || true)
+                if [ "$UNFILLED" -gt 0 ]; then
+                    warn "$UNFILLED secrets still CHANGE_ME — fill them at https://dashboard.doppler.com"
+                    warn "Then re-run: bash $DOPPLER_SCRIPT"
+                else
+                    log "All secrets loaded from Doppler!"
+                fi
+            fi
+            ;;
+        2)
+            # === MANUAL ===
+            if [ ! -f "$VAULT_EXAMPLE" ]; then
+                err "vault.yml.example not found"
+                exit 1
+            fi
+
+            cp "$VAULT_EXAMPLE" "$VAULT_FILE"
+            log "Edit vault.yml with your secrets:"
+            read -p "Open in nano now? (Y/n) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                nano "$VAULT_FILE"
+            fi
+
+            if grep -q "CHANGE_ME" "$VAULT_FILE" 2>/dev/null; then
+                warn "vault.yml still contains CHANGE_ME placeholders!"
+                read -p "Continue anyway? (y/N) " -n 1 -r
+                echo
+                [[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
+            fi
+
+            log "Encrypting vault.yml with ansible-vault..."
+            echo -e "${YELLOW}Choose a vault password:${NC}"
+            ansible-vault encrypt "$VAULT_FILE"
+            log "vault.yml encrypted"
+            ;;
+        *)
+            err "Invalid choice"
+            exit 1
+            ;;
+    esac
 fi
 
 ###############################################################################
@@ -313,6 +329,16 @@ header "Step 6/6: Deploying Infrastructure"
 
 cd "$INFRA_DIR"
 
+# If vault.yml is ansible-vault encrypted, we need --ask-vault-pass
+# If secrets came from Doppler (plaintext), no vault pass needed
+if head -1 "$INFRA_DIR/group_vars/vault.yml" 2>/dev/null | grep -q "ANSIBLE_VAULT"; then
+    VAULT_OPT="--ask-vault-pass"
+    log "Vault encrypted — will prompt for vault password"
+else
+    VAULT_OPT=""
+    log "Secrets from Doppler — no vault password needed"
+fi
+
 echo -e "${YELLOW}Deployment options:${NC}"
 echo "  1) Full deployment (all 9 phases) — site.yml"
 echo "  2) Proxmox init only (phase 0) — creates LXCs + VMs"
@@ -326,7 +352,7 @@ case $DEPLOY_CHOICE in
         log "Running FULL deployment..."
         ansible-playbook site.yml \
             -i inventory/hosts.yml \
-            --ask-vault-pass \
+            ${VAULT_OPT} \
             -e "ansible_connection=local" \
             2>&1 | tee /var/log/grupafestiwale-deploy.log
 
@@ -336,7 +362,7 @@ case $DEPLOY_CHOICE in
         log "Running Phase 0 only (Proxmox init)..."
         ansible-playbook playbooks/00-proxmox-init.yml \
             -i inventory/hosts.yml \
-            --ask-vault-pass \
+            ${VAULT_OPT} \
             -e "ansible_connection=local" \
             2>&1 | tee /var/log/grupafestiwale-deploy.log
 
@@ -375,7 +401,7 @@ case $DEPLOY_CHOICE in
             log "Running: $desc"
             ansible-playbook "playbooks/$file" \
                 -i inventory/hosts.yml \
-                --ask-vault-pass \
+                ${VAULT_OPT} \
                 -e "ansible_connection=local" \
                 2>&1 | tee -a /var/log/grupafestiwale-deploy.log
 
