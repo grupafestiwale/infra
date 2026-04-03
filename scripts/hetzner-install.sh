@@ -158,10 +158,11 @@ SWRAIDLEVEL 1
 HOSTNAME pve1.grupafestiwale.pl
 
 ## Partitions
-## Boot + Root on mdraid, rest left for ZFS (created post-install)
-PART /boot  ext4  1024M
-PART lvm    vg0   100G
-PART swap   swap  16G
+## EFI + Boot + Root on mdraid, rest left for ZFS (created post-install)
+PART /boot/efi  esp   256M
+PART /boot      ext4  1024M
+PART lvm        vg0   100G
+PART swap       swap  16G
 ## Leave remaining space unpartitioned → ZFS pool post-install
 
 LV vg0 root / ext4 100G
@@ -306,6 +307,15 @@ if ! pvesm status | grep -q "local-zfs"; then
     pvesm add zfspool local-zfs -pool rpool/data
     echo "Added 'local-zfs' storage to Proxmox"
 fi
+
+# Limit ZFS ARC to 16 GB (default is 50% of RAM = 64 GB, starves VMs)
+echo "Setting ZFS ARC max to 16 GB..."
+echo "options zfs zfs_arc_max=17179869184" > /etc/modprobe.d/zfs.conf
+# Apply immediately
+echo 17179869184 > /proc/sys/kernel/spl/hostid 2>/dev/null || true
+echo 17179869184 > /sys/module/zfs/parameters/zfs_arc_max 2>/dev/null || true
+update-initramfs -u -k all 2>/dev/null || true
+echo "ZFS ARC limited to 16 GB"
 
 # Remove no-subscription nag
 if [ -f /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js ]; then
