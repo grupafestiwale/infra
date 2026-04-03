@@ -127,6 +127,7 @@ postgresql_databases:
   - name: authentik
   - name: borys
   - name: rekrutacja
+  - name: paperclip
 
 # === DRAGONFLYDB ===
 dragonflydb_port: 6379
@@ -168,6 +169,10 @@ subdomains:
   ruflo: "ruflo.{{ domain }}"        # RuFlo Agent Runtime
   api: "api.{{ domain }}"            # LiteLLM Router
 
+  # Agentic Stack
+  paperclip: "paperclip.{{ domain }}" # Paperclip - AI Orchestration TopLayer
+  hermes: "hermes.{{ domain }}"       # Hermes - AI Assistant Gateway
+
   # Business Apps
   borys: "borys.{{ domain }}"        # Borys - Next.JS AI Admin Panel
   rekrutacja: "rekrutacja.{{ domain }}" # HR Panel - Next.JS
@@ -192,4 +197,6 @@ authentik_protected_apps:
   - docs
   - files
   - ruflo
+  - paperclip
   - grafana
+  # hermes — NOT protected (uses own API key auth + platform tokens)

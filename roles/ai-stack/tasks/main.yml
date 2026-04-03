@@ -12,6 +12,17 @@
     - lobechat
     - ruflo
     - ollama
+    - paperclip
+    - hermes
+    - hermes-data
+
+- name: Clone Hermes Agent repo
+  ansible.builtin.git:
+    repo: https://github.com/nousresearch/hermes-agent.git
+    dest: /opt/ai-stack/hermes
+    version: main
+    depth: 1
+    force: true
 
 - name: Deploy Traefik socket proxy config
   ansible.builtin.template:

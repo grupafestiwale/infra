@@ -71,6 +71,13 @@ vault_pg_lobechat_password: "$(get PG_LOBECHAT_PASSWORD)"
 vault_pg_authentik_password: "$(get PG_AUTHENTIK_PASSWORD)"
 vault_pg_borys_password: "$(get PG_BORYS_PASSWORD)"
 vault_pg_rekrutacja_password: "$(get PG_REKRUTACJA_PASSWORD)"
+vault_pg_paperclip_password: "$(get PG_PAPERCLIP_PASSWORD)"
+
+# Paperclip
+vault_paperclip_auth_secret: "$(get PAPERCLIP_AUTH_SECRET)"
+
+# Hermes
+vault_hermes_api_key: "$(get HERMES_API_KEY)"
 
 # DragonflyDB
 vault_dragonflydb_password: "$(get DRAGONFLYDB_PASSWORD)"
@@ -111,7 +118,7 @@ vault_storagebox_user: "$(get STORAGEBOX_USER)"
 vault_storagebox_password: "$(get STORAGEBOX_PASSWORD)"
 VAULT
 
-TOTAL_SECRETS=41
+TOTAL_SECRETS=44
 # Check for unfilled secrets
 UNFILLED=$(grep -c "CHANGE_ME" "$OUTPUT_FILE" || true)
 if [ "$UNFILLED" -gt 0 ]; then

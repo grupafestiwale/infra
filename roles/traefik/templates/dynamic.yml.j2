@@ -100,6 +100,23 @@ http:
       tls:
         certResolver: cloudflare
 
+    # === AGENTIC STACK (Paperclip protected, Hermes API-key auth) ===
+    paperclip:
+      rule: "Host(`paperclip.{{ domain }}`)"
+      entryPoints: [websecure]
+      service: paperclip
+      middlewares: [authentik]
+      tls:
+        certResolver: cloudflare
+
+    hermes:
+      rule: "Host(`hermes.{{ domain }}`)"
+      entryPoints: [websecure]
+      service: hermes
+      tls:
+        certResolver: cloudflare
+      # Hermes uses API_SERVER_KEY auth — no forward-auth
+
     # === LXC-03 DATA services (protected) ===
     files:
       rule: "Host(`files.{{ domain }}`)"
@@ -164,11 +181,22 @@ http:
         servers:
           - url: "http://10.10.40.5:3001"
 
+    # Agentic Stack
+    paperclip:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.40.5:3100"
+
+    hermes:
+      loadBalancer:
+        servers:
+          - url: "http://10.10.40.5:3400"
+
     # Business Apps
     borys:
       loadBalancer:
         servers:
-          - url: "http://10.10.40.5:3100"
+          - url: "http://10.10.40.5:3300"
 
     rekrutacja:
       loadBalancer:
